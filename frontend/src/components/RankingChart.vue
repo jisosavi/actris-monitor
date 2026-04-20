@@ -55,15 +55,16 @@ const option = computed(() => {
       textStyle: { color: '#e2e8f0', fontSize: 12 },
       formatter: (params: any[]) => {
         const p = params[0]
-        const station = stations[p.dataIndex]
+        const station = stations[p.dataIndex as number]
+        if (!station) return p.name as string
         const val = isConcentration
-          ? `${p.value.toFixed(1)} ${unit.value}`
-          : `${p.value > 0 ? '+' : ''}${p.value.toFixed(1)}%`
+          ? `${(p.value as number).toFixed(1)} ${unit.value}`
+          : `${(p.value as number) > 0 ? '+' : ''}${(p.value as number).toFixed(1)}%`
         const delta =
           station.delta_pct != null
             ? `<br/><span style="color:${station.delta_pct > 0 ? '#f43f5e' : '#10b981'}">${station.delta_pct > 0 ? '▲' : '▼'} ${Math.abs(station.delta_pct).toFixed(1)}% YoY</span>`
             : ''
-        return `<b>${p.name}</b><br/>${val}${delta}`
+        return `<b>${p.name as string}</b><br/>${val}${delta}`
       },
     },
     grid: { left: 6, right: 20, top: 6, bottom: 30, containLabel: true },
