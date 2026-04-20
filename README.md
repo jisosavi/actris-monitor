@@ -1,10 +1,12 @@
 # ACTRIS Monitor: Aerosol In-Situ Network Dashboard
 
-## Core Function
+## What is ACTRIS Monitor?
 
 ACTRIS Monitor is an interactive visualization dashboard for long-term aerosol measurement data from the ACTRIS/EBAS European research network. It displays annual station averages, year-on-year concentration changes, and network-wide statistics for three key atmospheric variables across measurement stations spanning Europe and beyond.
 
 Data is fetched directly from the EBAS THREDDS OPeNDAP server at NILU (Norwegian Institute for Air Research), covering fully quality-controlled Level 2 observations from 2011 to 2022.
+
+For inspiration, thanks to research professor Antti Hyvärinen / Finnish Meteorological Institute!
 
 ## Measured Variables
 
