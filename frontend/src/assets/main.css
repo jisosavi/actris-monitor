@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+:root {
+  --bg: #070d1a;
+  --surface: #0f1829;
+  --surface-2: #162035;
+  --border: #1e3052;
+  --accent: #00d4ff;
+  --accent-2: #7c3aed;
+  --text: #e2e8f0;
+  --text-muted: #64748b;
+  --positive: #10b981;
+  --negative: #f43f5e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2d4a7a; }
+
+.maplibregl-ctrl-group {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+}
+.maplibregl-ctrl-group button {
+  background: var(--surface) !important;
+  color: var(--text-muted) !important;
+}
+.maplibregl-ctrl-group button:hover { background: var(--surface-2) !important; }
+.maplibregl-ctrl-scale {
+  background: rgba(7, 13, 26, 0.7) !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
+}
