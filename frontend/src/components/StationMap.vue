@@ -164,7 +164,16 @@ onUnmounted(() => {
     <!-- Loading veil -->
     <Transition name="veil">
       <div v-if="stationsQuery.isFetching.value" class="loading-veil">
-        <div class="spinner" />
+        <div class="loading-box">
+          <div class="spinner" />
+          <div class="loading-msg">
+            <span v-if="!stationsQuery.data.value">Fetching from EBAS THREDDS…</span>
+            <span v-else>Updating…</span>
+          </div>
+          <div v-if="!stationsQuery.data.value" class="loading-sub">
+            First load takes 30–90 s while data is fetched from remote servers. Results are cached for 24 h.
+          </div>
+        </div>
       </div>
     </Transition>
   </div>
@@ -219,11 +228,23 @@ onUnmounted(() => {
 .loading-veil {
   position: absolute;
   inset: 0;
-  background: rgba(7, 13, 26, 0.55);
+  background: rgba(7, 13, 26, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 20;
+}
+.loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 32px;
+  background: rgba(10, 18, 35, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 320px;
+  text-align: center;
 }
 .spinner {
   width: 36px; height: 36px;
@@ -231,6 +252,16 @@ onUnmounted(() => {
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+.loading-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.loading-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 

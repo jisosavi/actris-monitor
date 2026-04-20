@@ -1,12 +1,11 @@
 """
-ACTRIS API client with 24-hour in-memory TTL cache.
+ACTRIS metadata catalog client — facilities only.
 
 Base URL: https://prod-actris-md2.nilu.no
 Swagger:  https://prod-actris-md2.nilu.no/index.html
 
-TODO: Verify exact endpoint paths and query parameters against the swagger.
-The endpoints used here follow the documented patterns but field names in
-responses may differ — update the column mapping in aggregation.py accordingly.
+The /facilities/ endpoint returns station coordinates used to enrich EBAS data.
+Measurement values come from THREDDS via ebas_thredds.py, not this API.
 """
 
 import httpx
@@ -18,6 +17,8 @@ _TTL = timedelta(hours=24)
 
 
 class ActrisClient:
+    """Thin client kept for backward-compat; EbasThreddsClient embeds its own facilities fetch."""
+
     def __init__(self) -> None:
         self._client: httpx.AsyncClient | None = None
         self._cache: dict[str, tuple[Any, datetime]] = {}
@@ -33,63 +34,21 @@ class ActrisClient:
         if self._client:
             await self._client.aclose()
 
-    def _cached(self, key: str) -> Any | None:
-        if key in self._cache:
-            data, ts = self._cache[key]
-            if datetime.now() - ts < _TTL:
-                return data
-        return None
-
-    def _store(self, key: str, data: Any) -> None:
-        self._cache[key] = (data, datetime.now())
-
     async def fetch_facilities(self) -> list[dict]:
         """
-        Fetch all ACTRIS measurement facilities (stations) with coordinates.
+        Fetch all ACTRIS measurement facilities with coordinates.
 
-        TODO: Confirm endpoint — likely GET /Facilities
-        Expected response fields:
-          identifier, name, latitude, longitude, country, instrumentTypes
+        Response fields per item:
+          identifier, name, lat, lon, alt (optional), country_code (optional)
         """
-        cached = self._cached("facilities")
-        if cached is not None:
-            return cached
+        if "facilities" in self._cache:
+            data, ts = self._cache["facilities"]
+            if datetime.now() - ts < _TTL:
+                return data
 
         assert self._client
-        resp = await self._client.get("/Facilities")
+        resp = await self._client.get("/facilities/")
         resp.raise_for_status()
         data: list[dict] = resp.json()
-        self._store("facilities", data)
-        return data
-
-    async def fetch_measurements(self, year: int, parameter: str) -> list[dict]:
-        """
-        Fetch annual mean observations for a parameter across all ACTRIS stations.
-
-        TODO: Confirm endpoint and params against swagger. Candidate endpoints:
-          GET /Observations  — with startDate/endDate + parameter filter
-          GET /DataProducts  — if data is pre-aggregated by year
-
-        Expected response per record:
-          facility_id, facility_name, latitude, longitude, country_code,
-          mean_value, data_coverage (0-1 fraction of the year with data)
-        """
-        key = f"{year}:{parameter}"
-        cached = self._cached(key)
-        if cached is not None:
-            return cached
-
-        assert self._client
-        resp = await self._client.get(
-            "/Observations",
-            params={
-                "parameter": parameter,
-                "startDate": f"{year}-01-01",
-                "endDate": f"{year}-12-31",
-                "statistics": "annual_mean",
-            },
-        )
-        resp.raise_for_status()
-        data: list[dict] = resp.json()
-        self._store(key, data)
+        self._cache["facilities"] = (data, datetime.now())
         return data
