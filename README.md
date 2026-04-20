@@ -59,3 +59,7 @@ First data load takes 30–90 seconds while the THREDDS catalog and file slices 
 ## Live Demo
 
 [https://www.isosavi.com/test/actris-monitor/](https://www.isosavi.com/test/actris-monitor/)
+
+## License
+
+GPL v3
