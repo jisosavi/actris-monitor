@@ -37,17 +37,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ACTRIS Monitor API", version="0.1.0", lifespan=lifespan)
 
-_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:4173",
-]
 import os as _os
-if _prod_origin := _os.environ.get("ALLOWED_ORIGIN"):
-    _ALLOWED_ORIGINS.append(_prod_origin)
+_ALLOWED_ORIGINS = _os.environ.get("ALLOWED_ORIGIN", "*")
+_ORIGINS_LIST = [o.strip() for o in _ALLOWED_ORIGINS.split(",")] if _ALLOWED_ORIGINS != "*" else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origins=_ORIGINS_LIST,
     allow_methods=["GET"],
     allow_headers=["*"],
 )
