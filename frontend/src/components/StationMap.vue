@@ -41,9 +41,32 @@ function buildLayer(stations: Station[]) {
   const lo = Math.min(...values)
   const hi = Math.max(...values)
 
-  return new ScatterplotLayer<Station>({
+  const noData = stations.filter((s) => s.mean === null)
+  console.log('No-data stations:', noData.length, noData.map(s => s.id))
+
+  // Hollow layer for stations with no data for the selected year
+  const noDataLayer = new ScatterplotLayer<Station>({
+    id: 'stations-nodata',
+    data: noData,
+    getPosition: (d) => [d.lon, d.lat],
+    getRadius: 20000,
+    getFillColor: [0, 0, 0, 0],
+    getLineColor: [150, 160, 180, 200],
+    getLineWidth: 2000,
+    lineWidthMinPixels: 2,
+    radiusMinPixels: 6,
+    radiusMaxPixels: 14,
+    filled: true,
+    stroked: true,
+    pickable: true,
+    onHover: ({ object }) => {
+      store.hoveredStation = (object as Station) ?? null
+    },
+  })
+
+  const dataLayer = new ScatterplotLayer<Station>({
     id: 'stations',
-    data: stations,
+    data: stations.filter((s) => s.mean !== null),
     getPosition: (d) => [d.lon, d.lat],
     getRadius: (d) => {
       if (!d.mean || d.mean <= 0) return 20000
@@ -70,11 +93,13 @@ function buildLayer(stations: Station[]) {
       getRadius: rankingMode.value,
     },
   })
+
+  return [noDataLayer, dataLayer]
 }
 
 function refresh(stations: Station[]) {
   if (!overlay.value) return
-  overlay.value.setProps({ layers: [buildLayer(stations)] })
+  overlay.value.setProps({ layers: buildLayer(stations) })
 }
 
 onMounted(() => {
@@ -123,7 +148,7 @@ onUnmounted(() => {
       <div v-if="hoveredStation" class="tooltip">
         <div class="tooltip-name">{{ hoveredStation.name }}</div>
         <div class="tooltip-country">{{ hoveredStation.country }} · {{ hoveredStation.id }}</div>
-        <div class="tooltip-row">
+        <div v-if="hoveredStation.mean !== null" class="tooltip-row">
           <div>
             <div class="tooltip-sub">Annual mean</div>
             <div class="tooltip-val">
@@ -141,7 +166,8 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div class="tooltip-coverage">
+        <div v-else class="tooltip-nodata">No data for selected year</div>
+        <div v-if="hoveredStation.mean !== null" class="tooltip-coverage">
           Coverage {{ (hoveredStation.data_coverage * 100).toFixed(0) }}%
         </div>
       </div>
@@ -205,6 +231,7 @@ onUnmounted(() => {
 .tooltip-delta { font-size: 14px; }
 .delta-up { color: var(--negative); }
 .delta-dn { color: var(--positive); }
+.tooltip-nodata { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-style: italic; }
 .tooltip-coverage { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
 
 .legend {

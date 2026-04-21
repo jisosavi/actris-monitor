@@ -24,7 +24,7 @@ const { stationsQuery } = useStationData()
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
 
 const sorted = computed<Station[]>(() => {
-  const data = stationsQuery.data.value ?? []
+  const data = (stationsQuery.data.value ?? []).filter((s) => s.mean !== null)
   if (rankingMode.value === 'delta') {
     return [...data]
       .filter((s) => s.delta_pct !== null)

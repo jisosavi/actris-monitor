@@ -27,8 +27,7 @@ def compute_annual_stats(
     if missing:
         raise ValueError(f"Station records missing columns: {missing}")
 
-    df = df[df["mean"].notna() & (df["mean"] > 0)].copy()
-    df["data_coverage"] = df["data_coverage"].fillna(1.0)
+    df["data_coverage"] = df["data_coverage"].fillna(0.0)
 
     prev_map: dict[str, float] = {}
     if prev_raw:
@@ -38,9 +37,10 @@ def compute_annual_stats(
 
     records = []
     for _, row in df.iterrows():
-        prev = prev_map.get(str(row["id"]))
+        has_data = pd.notna(row["mean"]) and float(row["mean"]) > 0
+        prev = prev_map.get(str(row["id"])) if has_data else None
         delta_pct: float | None = None
-        if prev and prev > 0:
+        if has_data and prev and prev > 0:
             delta_pct = round((float(row["mean"]) - prev) / prev * 100, 2)
 
         records.append({
@@ -49,14 +49,14 @@ def compute_annual_stats(
             "lat":           float(row["lat"]),
             "lon":           float(row["lon"]),
             "country":       str(row.get("country", "")),
-            "mean":          round(float(row["mean"]), 3),
+            "mean":          round(float(row["mean"]), 3) if has_data else None,
             "unit":          unit,
             "delta_pct":     delta_pct,
             "prev_mean":     round(prev, 3) if prev else None,
             "data_coverage": round(float(row["data_coverage"]), 3),
         })
 
-    return sorted(records, key=lambda x: x["mean"], reverse=True)
+    return sorted(records, key=lambda x: (x["mean"] is not None, x["mean"] or 0), reverse=True)
 
 
 def compute_network_stats(stations: list[dict], year: int, variable: str) -> dict:

@@ -96,17 +96,23 @@ class EbasThreddsClient:
         nc_var = NC_VAR[variable]
         target_wl = TARGET_WAVELENGTH[variable]
 
+        # Files covering the requested year (for data fetch)
         relevant = [
             f for f in catalog
             if f.instrument in instruments
             and f.start.year <= year <= f.end.year
         ]
 
-        # One representative file per station for metadata lookup
+        # All files for this instrument regardless of year (for known-station markers)
+        all_instrument = [f for f in catalog if f.instrument in instruments]
+
+        # Representative file per station: prefer a year-relevant file, else any file
         rep_files: dict[str, _FileInfo] = {}
-        for fi in relevant:
+        for fi in all_instrument:
             if fi.station not in rep_files:
                 rep_files[fi.station] = fi
+        for fi in relevant:
+            rep_files[fi.station] = fi  # prefer year-relevant file for metadata
 
         sem = asyncio.Semaphore(_MAX_CONCURRENT)
 
@@ -126,18 +132,18 @@ class EbasThreddsClient:
                 by_station.setdefault(fi.station, []).append(mean)
 
         records = []
-        for station_code, values in by_station.items():
-            meta = self._station_meta.get(station_code)
-            if meta is None:
-                continue
+        for station_code, meta in self._station_meta.items():
+            if station_code not in rep_files:
+                continue  # not relevant to this variable
+            values = by_station.get(station_code)
             records.append({
                 "id":            station_code,
                 "name":          meta["name"],
                 "lat":           meta["lat"],
                 "lon":           meta["lon"],
                 "country":       meta["country"],
-                "mean":          float(np.mean(values)),
-                "data_coverage": 1.0,
+                "mean":          float(np.mean(values)) if values else None,
+                "data_coverage": 1.0 if values else 0.0,
             })
 
         self._set_cached(key, records)
