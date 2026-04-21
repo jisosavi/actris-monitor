@@ -16,6 +16,24 @@ const store = useStationsStore()
 const { rankingMode, hoveredStation } = storeToRefs(store)
 const { stationsQuery } = useStationData()
 
+const elapsed = ref(0)
+const lastLoadTime = ref<number | null>(null)
+let timerInterval: ReturnType<typeof setInterval> | null = null
+let fetchStart = 0
+
+watch(() => stationsQuery.isFetching.value, (fetching) => {
+  if (fetching) {
+    elapsed.value = 0
+    fetchStart = Date.now()
+    timerInterval = setInterval(() => {
+      elapsed.value = Math.floor((Date.now() - fetchStart) / 1000)
+    }, 1000)
+  } else {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
+    if (fetchStart > 0) lastLoadTime.value = Math.floor((Date.now() - fetchStart) / 1000)
+  }
+})
+
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t }
 
 function concColor(v: number, lo: number, hi: number): [number, number, number, number] {
@@ -134,6 +152,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval)
   overlay.value?.finalize()
   map.value?.remove()
 })
@@ -195,6 +214,10 @@ onUnmounted(() => {
           <div class="loading-msg">
             <span v-if="!stationsQuery.data.value">Fetching from EBAS THREDDS…</span>
             <span v-else>Updating…</span>
+          </div>
+          <div class="loading-timer">{{ elapsed }}s</div>
+          <div v-if="lastLoadTime !== null" class="loading-prev">
+            Last time: {{ lastLoadTime }}s
           </div>
           <div v-if="!stationsQuery.data.value" class="loading-sub">
             First load takes 30–90 s while data is fetched from remote servers. Results are cached for 24 h.
@@ -287,6 +310,18 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
+}
+.loading-timer {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  line-height: 1;
+}
+.loading-prev {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: -4px;
 }
 .loading-sub {
   font-size: 11px;
