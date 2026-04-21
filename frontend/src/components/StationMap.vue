@@ -22,18 +22,18 @@ function concColor(v: number, lo: number, hi: number): [number, number, number, 
   const t = Math.max(0, Math.min(1, (v - lo) / (hi - lo || 1)))
   if (t < 0.5) {
     const s = t * 2
-    return [Math.round(lerp(0, 250, s)), Math.round(lerp(212, 180, s)), Math.round(lerp(255, 0, s)), 210]
+    return [Math.round(lerp(48, 230, s)), Math.round(lerp(49, 160, s)), Math.round(lerp(147, 0, s)), 220]
   }
   const s = (t - 0.5) * 2
-  return [Math.round(lerp(250, 255, s)), Math.round(lerp(180, 40, s)), 0, 210]
+  return [Math.round(lerp(230, 191, s)), Math.round(lerp(160, 48, s)), Math.round(lerp(0, 48, s)), 220]
 }
 
 function deltaColor(d: number | null): [number, number, number, number] {
-  if (d === null) return [100, 116, 139, 160]
+  if (d === null) return [140, 150, 170, 120]
   const intensity = Math.min(1, Math.abs(d) / 40)
   return d > 0
-    ? [Math.round(lerp(200, 244, intensity)), Math.round(lerp(40, 63, intensity * 0.2)), Math.round(lerp(80, 94, intensity * 0.2)), 220]
-    : [Math.round(lerp(30, 16, intensity)), Math.round(lerp(140, 185, intensity)), Math.round(lerp(100, 129, intensity)), 220]
+    ? [Math.round(lerp(220, 191, intensity)), Math.round(lerp(60, 48, intensity)), Math.round(lerp(60, 48, intensity)), 230]
+    : [Math.round(lerp(30, 26, intensity)), Math.round(lerp(160, 122, intensity)), Math.round(lerp(80, 82, intensity)), 230]
 }
 
 function buildLayer(stations: Station[]) {
@@ -107,7 +107,7 @@ onMounted(() => {
 
   map.value = new maplibregl.Map({
     container: mapContainer.value,
-    style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+    style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
     center: [15, 54],
     zoom: 3.5,
     minZoom: 2,
@@ -213,7 +213,7 @@ onUnmounted(() => {
   position: absolute;
   top: 14px;
   left: 14px;
-  background: rgba(7, 13, 26, 0.92);
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px 14px;
@@ -221,12 +221,13 @@ onUnmounted(() => {
   pointer-events: none;
   z-index: 10;
   min-width: 170px;
+  box-shadow: 0 4px 16px rgba(48, 49, 147, 0.10);
 }
 .tooltip-name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
 .tooltip-country { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
 .tooltip-row { display: flex; gap: 20px; }
 .tooltip-sub { font-size: 10px; color: var(--text-muted); margin-bottom: 2px; }
-.tooltip-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tooltip-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
 .tooltip-unit { font-size: 10px; color: var(--text-muted); }
 .tooltip-delta { font-size: 14px; }
 .delta-up { color: var(--negative); }
@@ -238,24 +239,25 @@ onUnmounted(() => {
   position: absolute;
   bottom: 48px;
   left: 14px;
-  background: rgba(7, 13, 26, 0.85);
+  background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 14px;
   backdrop-filter: blur(10px);
   z-index: 10;
   min-width: 150px;
+  box-shadow: 0 2px 8px rgba(48, 49, 147, 0.08);
 }
 .legend-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
 .legend-bar { height: 8px; border-radius: 4px; }
-.legend-bar--conc { background: linear-gradient(to right, #00d4ff, #fab40a, #ff2832); }
-.legend-bar--delta { background: linear-gradient(to right, #10b981, #94a3b8, #f43f5e); }
+.legend-bar--conc { background: linear-gradient(to right, #303193, #e6a000, #bf3030); }
+.legend-bar--delta { background: linear-gradient(to right, #1a7a52, #c8ccd8, #bf3030); }
 .legend-ticks { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--text-muted); }
 
 .loading-veil {
   position: absolute;
   inset: 0;
-  background: rgba(7, 13, 26, 0.72);
+  background: rgba(238, 241, 247, 0.80);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -267,15 +269,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
   padding: 28px 32px;
-  background: rgba(10, 18, 35, 0.9);
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--border);
   border-radius: 14px;
   max-width: 320px;
   text-align: center;
+  box-shadow: 0 8px 32px rgba(48, 49, 147, 0.12);
 }
 .spinner {
   width: 36px; height: 36px;
-  border: 3px solid rgba(0, 212, 255, 0.15);
+  border: 3px solid rgba(48, 49, 147, 0.15);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;

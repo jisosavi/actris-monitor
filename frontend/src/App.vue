@@ -5,6 +5,8 @@ import ControlPanel from '@/components/ControlPanel.vue'
 import StatsCards from '@/components/StatsCards.vue'
 import StationMap from '@/components/StationMap.vue'
 import RankingChart from '@/components/RankingChart.vue'
+import { Badge } from '@/components/ui/badge'
+import { Separator } from '@/components/ui/separator'
 import { useStationsStore } from '@/stores/stations'
 import { VARIABLES } from '@/types'
 
@@ -18,39 +20,41 @@ const varMeta = computed(() => VARIABLES[selectedVariable.value])
     <!-- Header -->
     <header class="header">
       <div class="header-brand">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" class="brand-icon">
-          <circle cx="12" cy="12" r="10" stroke="#00d4ff" stroke-width="1.5" />
-          <circle cx="12" cy="12" r="5" stroke="#7c3aed" stroke-width="1.5" />
-          <circle cx="12" cy="12" r="1.5" fill="#00d4ff" />
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" class="brand-icon">
+          <circle cx="12" cy="12" r="10" stroke="#303193" stroke-width="1.8" />
+          <circle cx="12" cy="12" r="5"  stroke="#303193" stroke-width="1.8" stroke-dasharray="3 2" />
+          <circle cx="12" cy="12" r="1.8" fill="#303193" />
         </svg>
         <span class="brand-name">ACTRIS Monitor</span>
+        <Separator orientation="vertical" class="h-4 mx-1" />
         <span class="brand-sub">Aerosol In-Situ Network</span>
       </div>
+
       <div class="header-badges">
-        <span class="badge badge--year">{{ selectedYear }}</span>
-        <span class="badge badge--var">{{ varMeta.shortLabel }}</span>
-        <span class="badge badge--unit">{{ varMeta.unit }}</span>
+        <Badge variant="outline" class="badge-year">{{ selectedYear }}</Badge>
+        <Badge variant="outline" class="badge-var">{{ varMeta.shortLabel }}</Badge>
+        <Badge variant="outline" class="badge-unit">{{ varMeta.unit }}</Badge>
       </div>
+
       <div class="header-right">
-        <a
-          href="https://www.actris.eu"
-          target="_blank"
-          rel="noopener"
-          class="header-link"
-        >actris.eu ↗</a>
+        <a href="https://www.actris.eu" target="_blank" rel="noopener" class="header-link">
+          actris.eu ↗
+        </a>
+        <Separator orientation="vertical" class="h-4 mx-3" />
+        <a href="https://ebas.nilu.no" target="_blank" rel="noopener" class="header-link">
+          EBAS ↗
+        </a>
       </div>
     </header>
 
     <!-- Main body -->
     <div class="body">
-      <!-- Left sidebar -->
       <aside class="sidebar">
         <ControlPanel />
-        <div class="sidebar-divider" />
+        <Separator class="my-3" />
         <StatsCards />
       </aside>
 
-      <!-- Map + ranking -->
       <div class="content">
         <div class="map-area">
           <StationMap />
@@ -77,35 +81,32 @@ const varMeta = computed(() => VARIABLES[selectedVariable.value])
 .header {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   height: 52px;
   padding: 0 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 100;
+  box-shadow: 0 1px 3px rgba(48, 49, 147, 0.06);
 }
 
-.header-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.header-brand { display: flex; align-items: center; gap: 8px; }
+
 .brand-icon { flex-shrink: 0; }
+
 .brand-name {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--text);
+  color: var(--accent);
   white-space: nowrap;
 }
+
 .brand-sub {
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
-  padding-left: 6px;
-  border-left: 1px solid var(--border);
-  margin-left: 2px;
 }
 
 .header-badges {
@@ -113,59 +114,57 @@ const varMeta = computed(() => VARIABLES[selectedVariable.value])
   gap: 6px;
   margin-left: auto;
 }
-.badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 4px;
-  font-variant-numeric: tabular-nums;
-}
-.badge--year { background: rgba(0, 212, 255, 0.12); color: var(--accent); border: 1px solid rgba(0, 212, 255, 0.25); }
-.badge--var  { background: rgba(124, 58, 237, 0.12); color: #a78bfa; border: 1px solid rgba(124, 58, 237, 0.25); font-family: Georgia, serif; font-style: italic; }
-.badge--unit { background: rgba(100, 116, 139, 0.1); color: var(--text-muted); border: 1px solid var(--border); font-family: monospace; }
 
-.header-right { margin-left: 12px; }
-.header-link { font-size: 11px; color: var(--text-muted); text-decoration: none; }
+.badge-year {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  border-color: rgba(48, 49, 147, 0.3);
+  background: rgba(48, 49, 147, 0.06);
+  font-weight: 600;
+}
+.badge-var {
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: var(--text);
+  border-color: var(--border);
+}
+.badge-unit {
+  font-family: monospace;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+.header-link {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color 0.15s;
+}
 .header-link:hover { color: var(--accent); }
 
 /* ── Body ── */
-.body {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
+.body { display: flex; flex: 1; min-height: 0; }
 
 /* ── Sidebar ── */
 .sidebar {
-  width: 260px;
+  width: 268px;
   flex-shrink: 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding-top: 12px;
-}
-.sidebar-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 12px 0;
+  padding-top: 4px;
+  box-shadow: 1px 0 4px rgba(48, 49, 147, 0.04);
 }
 
-/* ── Content area ── */
-.content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.map-area {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-}
-.ranking-area {
-  height: 240px;
-  flex-shrink: 0;
-}
+/* ── Content ── */
+.content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.map-area { flex: 1; min-height: 0; position: relative; }
+.ranking-area { height: 240px; flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--border); }
 </style>
