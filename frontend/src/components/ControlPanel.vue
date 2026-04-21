@@ -18,8 +18,9 @@ const { selectedYear, selectedVariable, rankingMode } = storeToRefs(store)
 const variables = Object.entries(VARIABLES) as [Variable, (typeof VARIABLES)[Variable]][]
 const years = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MAX - i)
 
-function onYearChange(val: string) {
-  selectedYear.value = Number(val)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function onYearChange(val: any) {
+  if (val != null) selectedYear.value = Number(val)
 }
 </script>
 
