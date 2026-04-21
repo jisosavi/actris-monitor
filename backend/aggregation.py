@@ -33,14 +33,18 @@ def compute_annual_stats(
     if prev_raw:
         pf = pd.DataFrame(prev_raw)
         if {"id", "mean"}.issubset(pf.columns):
-            prev_map = dict(zip(pf["id"].astype(str), pf["mean"]))
+            prev_map = {
+                str(k): float(v)
+                for k, v in zip(pf["id"], pf["mean"])
+                if pd.notna(v) and float(v) > 0
+            }
 
     records = []
     for _, row in df.iterrows():
         has_data = pd.notna(row["mean"]) and float(row["mean"]) > 0
         prev = prev_map.get(str(row["id"])) if has_data else None
         delta_pct: float | None = None
-        if has_data and prev and prev > 0:
+        if has_data and prev is not None and prev > 0:
             delta_pct = round((float(row["mean"]) - prev) / prev * 100, 2)
 
         records.append({
@@ -52,7 +56,7 @@ def compute_annual_stats(
             "mean":          round(float(row["mean"]), 3) if has_data else None,
             "unit":          unit,
             "delta_pct":     delta_pct,
-            "prev_mean":     round(prev, 3) if prev else None,
+            "prev_mean":     round(prev, 3) if prev is not None else None,
             "data_coverage": round(float(row["data_coverage"]), 3),
         })
 
