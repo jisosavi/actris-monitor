@@ -1,18 +1,17 @@
 from __future__ import annotations
 import asyncio
-import logging
-import time
 import os as _os
 from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from ebas_thredds import EbasThreddsClient
 from aggregation import compute_annual_stats, compute_network_stats
-
-logger = logging.getLogger(__name__)
+import database
+import fetch_jobs
 
 VARIABLES: dict[str, dict] = {
     "N": {
@@ -31,58 +30,29 @@ VARIABLES: dict[str, dict] = {
 
 VariableKey = Literal["N", "scattering", "absorption"]
 
-WARMUP_YEARS = list(range(2024, 2012, -1))  # 2024..2013 — display years 2014–2024 plus prev-year for delta
+YEAR_MIN = 2000
+YEAR_MAX = 2024
 
 client = EbasThreddsClient()
-
-_warmup_progress = {"done": 0, "total": 0, "complete": False}
-_warmup_task: asyncio.Task | None = None
-
-
-async def _warmup_cache() -> None:
-    combos = [(y, v) for v in VARIABLES for y in WARMUP_YEARS]
-    _warmup_progress["total"] = len(combos)
-    _warmup_progress["done"] = 0
-    _warmup_progress["complete"] = False
-
-    logger.info("Cache warmup starting: %d combinations", len(combos))
-    ok = fail = 0
-
-    for i, (year, var) in enumerate(combos, 1):
-        t0 = time.monotonic()
-        logger.info("Warmup [%d/%d] year=%d variable=%s ...", i, len(combos), year, var)
-        try:
-            await client.fetch_measurements(year, var)
-            logger.info("Warmup [%d/%d] done in %.1fs", i, len(combos), time.monotonic() - t0)
-            ok += 1
-        except asyncio.CancelledError:
-            logger.info("Warmup cancelled at [%d/%d]", i, len(combos))
-            raise
-        except Exception as exc:
-            logger.warning("Warmup [%d/%d] failed: %s", i, len(combos), exc)
-            fail += 1
-        _warmup_progress["done"] = i
-
-    _warmup_progress["complete"] = True
-    logger.info("Warmup complete: %d ok, %d failed", ok, fail)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _warmup_task
     await client.start()
-    _warmup_task = asyncio.create_task(_warmup_cache(), name="cache-warmup")
+    db_path = _os.environ.get("DATABASE_PATH", "/data/actris.db")
+    await database.init_db(db_path)
     yield
-    if _warmup_task and not _warmup_task.done():
-        _warmup_task.cancel()
+    if fetch_jobs.is_job_running():
+        fetch_jobs._active_task.cancel()  # type: ignore[attr-defined]
         try:
-            await _warmup_task
+            await fetch_jobs._active_task  # type: ignore[attr-defined]
         except (asyncio.CancelledError, Exception):
             pass
     await client.close()
+    await database.close_db()
 
 
-app = FastAPI(title="ACTRIS Monitor API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ACTRIS Monitor API", version="0.2.0", lifespan=lifespan)
 
 _ALLOWED_ORIGINS = _os.environ.get("ALLOWED_ORIGIN", "*")
 _ORIGINS_LIST = [o.strip() for o in _ALLOWED_ORIGINS.split(",")] if _ALLOWED_ORIGINS != "*" else ["*"]
@@ -90,10 +60,12 @@ _ORIGINS_LIST = [o.strip() for o in _ALLOWED_ORIGINS.split(",")] if _ALLOWED_ORI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ORIGINS_LIST,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
+
+# ── Existing data endpoints (now DB-backed) ───────────────────────────────────
 
 @app.get("/api/stations/{year}/{variable}")
 async def get_stations(year: int, variable: VariableKey):
@@ -102,8 +74,12 @@ async def get_stations(year: int, variable: VariableKey):
     if not 2000 <= year <= 2100:
         raise HTTPException(400, "Year out of range")
 
+    raw = await database.get_station_records(year, variable)
+    if not raw:
+        raise HTTPException(404, f"No data in database for {year}/{variable}. Use the Data panel to fetch it.")
+
+    prev_raw = await database.get_station_records(year - 1, variable)
     unit = VARIABLES[variable]["unit"]
-    raw, prev_raw = await _fetch_pair(year, variable)
     return compute_annual_stats(raw, prev_raw, unit)
 
 
@@ -112,33 +88,75 @@ async def get_network_stats(year: int, variable: VariableKey):
     if variable not in VARIABLES:
         raise HTTPException(400, f"Unknown variable '{variable}'")
 
-    unit = VARIABLES[variable]["unit"]
-    raw, _ = await _fetch_pair(year, variable)
-    stations = compute_annual_stats(raw, None, unit)
-    return compute_network_stats(stations, year, variable)
+    stats = await database.get_network_stats_row(year, variable)
+    if stats is None:
+        raise HTTPException(404, f"No stats in database for {year}/{variable}.")
+    return stats
 
 
-@app.get("/api/warmup-status")
-async def get_warmup_status():
-    return _warmup_progress
+# ── Database status & fetch job endpoints ─────────────────────────────────────
 
+@app.get("/api/db-status")
+async def get_db_status():
+    coverage = await database.get_db_coverage()
+    return {"coverage": coverage, "is_empty": len(coverage) == 0}
+
+
+@app.get("/api/fetch-progress")
+async def get_fetch_progress():
+    job = await database.get_latest_job()
+    if job is None:
+        return {"status": "idle"}
+    return job
+
+
+class FetchRequest(BaseModel):
+    years: list[int]
+    variables: list[str]
+
+
+@app.post("/api/start-fetch")
+async def start_fetch(body: FetchRequest):
+    if fetch_jobs.is_job_running():
+        raise HTTPException(409, "A fetch job is already running")
+
+    valid_years = [y for y in body.years if YEAR_MIN <= y <= YEAR_MAX + 5]
+    valid_vars = [v for v in body.variables if v in VARIABLES]
+    if not valid_years or not valid_vars:
+        raise HTTPException(400, "No valid year/variable combinations")
+
+    combos = [(y, v) for v in valid_vars for y in sorted(valid_years, reverse=True)]
+    await fetch_jobs.start_fetch_job(combos, client, VARIABLES)
+    return {"started": True, "total": len(combos)}
+
+
+@app.get("/api/check-new-year")
+async def check_new_year():
+    years_by_var: dict[str, set[int]] = {}
+    for var in VARIABLES:
+        years_by_var[var] = await client.get_catalog_years(var)
+
+    new_years = sorted(
+        y for y in set().union(*years_by_var.values()) if y > YEAR_MAX
+    )
+    return {"new_years": new_years, "current_max": YEAR_MAX}
+
+
+# ── Misc endpoints ─────────────────────────────────────────────────────────────
 
 @app.get("/api/variables")
 async def list_variables():
     return [{"key": k, **{f: v[f] for f in ("label", "unit")}} for k, v in VARIABLES.items()]
 
 
+@app.get("/api/warmup-status")
+async def get_warmup_status():
+    return {"done": 1, "total": 1, "complete": True}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-async def _fetch_pair(year: int, variable: str) -> tuple[list[dict], list[dict]]:
-    raw, prev_raw = await asyncio.gather(
-        client.fetch_measurements(year, variable),
-        client.fetch_measurements(year - 1, variable),
-    )
-    return raw, prev_raw
 
 
 if __name__ == "__main__":

@@ -149,6 +149,12 @@ class EbasThreddsClient:
         self._set_cached(key, records)
         return records
 
+    async def get_catalog_years(self, variable: str) -> set[int]:
+        """Return all years that have data for a given variable in the catalog."""
+        catalog = await self._get_catalog()
+        instruments = INSTRUMENT_MAP.get(variable, [])
+        return {f.end.year for f in catalog if f.instrument in instruments}
+
     async def _get_catalog(self) -> list[_FileInfo]:
         if self._catalog:
             files, ts = self._catalog

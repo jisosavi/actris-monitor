@@ -8,19 +8,26 @@ import RankingChart from '@/components/RankingChart.vue'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useStationsStore } from '@/stores/stations'
-import { useWarmupStatus } from '@/composables/useStationData'
+import { useFetchProgress, useDbStatus } from '@/composables/useStationData'
 import { VARIABLES } from '@/types'
+import FirstRunModal from '@/components/FirstRunModal.vue'
 
 const store = useStationsStore()
 const { selectedYear, selectedVariable } = storeToRefs(store)
 const varMeta = computed(() => VARIABLES[selectedVariable.value])
 
-const warmupQuery = useWarmupStatus()
-const warmup = computed(() => warmupQuery.data.value)
+const { data: job } = useFetchProgress()
+const { data: dbStatus } = useDbStatus()
+
+const showFirstRun = computed(() => dbStatus.value?.is_empty === true && job.value?.status !== 'running')
+const isFetching = computed(() => job.value?.status === 'running')
 </script>
 
 <template>
   <div class="shell">
+    <!-- First-run modal when DB is empty -->
+    <FirstRunModal v-if="showFirstRun" />
+
     <!-- Header -->
     <header class="header">
       <div class="header-brand">
@@ -41,9 +48,9 @@ const warmup = computed(() => warmupQuery.data.value)
       </div>
 
       <Transition name="warmup-fade">
-        <div v-if="warmup && !warmup.complete" class="warmup-indicator">
+        <div v-if="isFetching" class="warmup-indicator">
           <span class="warmup-dot" />
-          <span class="warmup-label">Caching {{ warmup.done }}/{{ warmup.total }}</span>
+          <span class="warmup-label">Fetching {{ job?.done }}/{{ job?.total }}</span>
         </div>
       </Transition>
 

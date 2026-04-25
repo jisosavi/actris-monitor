@@ -4,6 +4,7 @@ import { useStationsStore } from '@/stores/stations'
 import { VARIABLES, YEAR_MIN, YEAR_MAX, YEAR_PRELOADED_MIN } from '@/types'
 import type { Variable } from '@/types'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -14,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import AdminPanel from './AdminPanel.vue'
 
 const store = useStationsStore()
 const { selectedYear, selectedVariable, rankingMode } = storeToRefs(store)
@@ -88,6 +90,9 @@ function onYearChange(val: any) {
       </Button>
     </div>
   </div>
+
+  <Separator class="my-3" />
+  <AdminPanel />
 </template>
 
 <style scoped>
