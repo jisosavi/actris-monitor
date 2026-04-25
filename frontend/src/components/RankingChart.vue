@@ -35,11 +35,19 @@ const sorted = computed<Station[]>(() => {
 
 const VISIBLE = 10
 
+function measureMaxLabelWidth(labels: string[], fontSize = 11): number {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  return Math.ceil(Math.max(80, ...labels.map((l) => ctx.measureText(l).width)) + 12)
+}
+
 const option = computed(() => {
   const stations = sorted.value
   const names = stations.map((s) =>
     s.name && s.name !== s.id ? `${s.name} / ${s.id}` : s.id,
   )
+  const labelWidth = measureMaxLabelWidth(names)
   const values =
     rankingMode.value === 'concentration'
       ? stations.map((s) => s.mean ?? 0)
@@ -73,7 +81,7 @@ const option = computed(() => {
         return `<b>${label}</b><br/>${val}${delta}`
       },
     },
-    grid: { left: 6, right: 20, top: 6, bottom: 6, containLabel: true },
+    grid: { left: 6, right: 30, top: 6, bottom: 6, containLabel: true },
     dataZoom: [
       {
         type: 'inside',
@@ -84,6 +92,24 @@ const option = computed(() => {
         moveOnMouseWheel: true,
         moveOnMouseMove: false,
         filterMode: 'empty',
+      },
+      {
+        type: 'slider',
+        yAxisIndex: 0,
+        startValue: Math.max(0, n - VISIBLE),
+        endValue: n - 1,
+        width: 14,
+        right: 4,
+        top: 6,
+        bottom: 6,
+        brushSelect: false,
+        filterMode: 'empty',
+        showDetail: false,
+        showDataShadow: false,
+        fillerColor: 'rgba(48, 49, 147, 0.25)',
+        borderColor: 'rgba(48, 49, 147, 0.15)',
+        handleStyle: { color: '#303193', borderColor: '#303193' },
+        moveHandleStyle: { color: '#303193', opacity: 0.6 },
       },
     ],
     xAxis: {
@@ -103,7 +129,7 @@ const option = computed(() => {
       data: [...names].reverse(),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#94a3b8', fontSize: 11 },
+      axisLabel: { color: '#94a3b8', fontSize: 11, width: labelWidth, overflow: 'none' },
     },
     series: [
       {
