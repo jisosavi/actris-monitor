@@ -19,7 +19,7 @@ const varMeta = computed(() => VARIABLES[selectedVariable.value])
 const { data: job } = useFetchProgress()
 const { data: dbStatus } = useDbStatus()
 
-const showFirstRun = computed(() => dbStatus.value?.is_empty === true && job.value?.status !== 'running')
+const showFirstRun = computed(() => dbStatus.value?.is_empty === true)
 const isFetching = computed(() => job.value?.status === 'running')
 </script>
 
@@ -65,8 +65,8 @@ const isFetching = computed(() => job.value?.status === 'running')
       </div>
     </header>
 
-    <!-- Main body -->
-    <div class="body">
+    <!-- Main body — only when DB has data -->
+    <div v-if="dbStatus && !dbStatus.is_empty" class="body">
       <aside class="sidebar">
         <ControlPanel />
         <Separator class="my-3" />
