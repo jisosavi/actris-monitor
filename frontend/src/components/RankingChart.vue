@@ -81,7 +81,7 @@ const option = computed(() => {
         return `<b>${label}</b><br/>${val}${delta}`
       },
     },
-    grid: { left: 6, right: 30, top: 6, bottom: 6, containLabel: true },
+    grid: { left: labelWidth + 8, right: 30, top: 6, bottom: 6, containLabel: false },
     dataZoom: [
       {
         type: 'inside',
@@ -129,7 +129,7 @@ const option = computed(() => {
       data: [...names].reverse(),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#94a3b8', fontSize: 11, width: labelWidth, overflow: 'none' },
+      axisLabel: { color: '#94a3b8', fontSize: 11 },
     },
     series: [
       {
