@@ -11,6 +11,7 @@ import { useStationsStore } from '@/stores/stations'
 import { useFetchProgress, useDbStatus } from '@/composables/useStationData'
 import { VARIABLES } from '@/types'
 import FirstRunModal from '@/components/FirstRunModal.vue'
+import AdminPanel from '@/components/AdminPanel.vue'
 
 const store = useStationsStore()
 const { selectedYear, selectedVariable, showDataSetup } = storeToRefs(store)
@@ -71,6 +72,9 @@ const isFetching = computed(() => job.value?.status === 'running')
         <ControlPanel />
         <Separator class="my-3" />
         <StatsCards />
+        <div class="sidebar-spacer" />
+        <Separator />
+        <AdminPanel />
       </aside>
 
       <div class="content">
@@ -208,6 +212,8 @@ const isFetching = computed(() => job.value?.status === 'running')
   padding-top: 4px;
   box-shadow: 1px 0 4px rgba(48, 49, 147, 0.04);
 }
+
+.sidebar-spacer { flex: 1; }
 
 /* ── Content ── */
 .content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
