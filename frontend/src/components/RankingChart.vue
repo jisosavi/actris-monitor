@@ -37,7 +37,9 @@ const MAX_VISIBLE = 20
 
 const option = computed(() => {
   const stations = sorted.value.slice(0, MAX_VISIBLE)
-  const names = stations.map((s) => s.name)
+  const names = stations.map((s) =>
+    s.name && s.name !== s.id ? `${s.name} / ${s.id}` : s.id,
+  )
   const values =
     rankingMode.value === 'concentration'
       ? stations.map((s) => s.mean ?? 0)
@@ -64,7 +66,10 @@ const option = computed(() => {
           station.delta_pct != null
             ? `<br/><span style="color:${station.delta_pct > 0 ? '#f43f5e' : '#10b981'}">${station.delta_pct > 0 ? '▲' : '▼'} ${Math.abs(station.delta_pct).toFixed(1)}% YoY</span>`
             : ''
-        return `<b>${p.name as string}</b><br/>${val}${delta}`
+        const label = station.name && station.name !== station.id
+          ? `${station.name} / ${station.id}`
+          : station.id
+        return `<b>${label}</b><br/>${val}${delta}`
       },
     },
     grid: { left: 6, right: 20, top: 6, bottom: 30, containLabel: true },

@@ -172,8 +172,12 @@ onUnmounted(() => {
     <!-- Hover tooltip -->
     <Transition name="fade">
       <div v-if="hoveredStation" class="tooltip">
-        <div class="tooltip-name">{{ hoveredStation.name }}</div>
-        <div class="tooltip-country">{{ hoveredStation.country }} · {{ hoveredStation.id }}</div>
+        <div class="tooltip-name">
+          {{ hoveredStation.name && hoveredStation.name !== hoveredStation.id
+            ? `${hoveredStation.name} / ${hoveredStation.id}`
+            : hoveredStation.id }}
+        </div>
+        <div class="tooltip-country">{{ hoveredStation.country }}</div>
         <div v-if="hoveredStation.mean !== null" class="tooltip-row">
           <div>
             <div class="tooltip-sub">Annual mean</div>
