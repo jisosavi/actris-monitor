@@ -46,12 +46,26 @@ async def _run(
     client,
     variables: dict,
 ) -> None:
-    job_id = await database.create_job(total=len(combos))
-    logger.info("Fetch job %d started: %d combos", job_id, len(combos))
+    coverage = await database.get_db_coverage()
+    covered = {(r["year"], r["variable"]) for r in coverage}
+    new_combos = [(y, v) for (y, v) in combos if (y, v) not in covered]
+
+    skipped = len(combos) - len(new_combos)
+    if skipped:
+        logger.info("Skipping %d already-fetched combos", skipped)
+
+    if not new_combos:
+        job_id = await database.create_job(total=0)
+        await database.finish_job(job_id, "complete")
+        logger.info("Nothing to fetch — all combos already in DB")
+        return
+
+    job_id = await database.create_job(total=len(new_combos))
+    logger.info("Fetch job %d started: %d new combos (%d skipped)", job_id, len(new_combos), skipped)
     ok = fail = 0
 
-    for i, (year, var) in enumerate(combos, 1):
-        desc = f"Fetching {year} / {var}  ({i}/{len(combos)})"
+    for i, (year, var) in enumerate(new_combos, 1):
+        desc = f"Fetching {year} / {var}  ({i}/{len(new_combos)})"
         await database.update_job_progress(job_id, done=i - 1, current_desc=desc)
         t0 = time.monotonic()
         try:
@@ -63,15 +77,15 @@ async def _run(
             await database.upsert_station_records(year, var, raw)
             await database.upsert_network_stats(year, var, net_stats)
             logger.info("Job %d [%d/%d] %d/%s done in %.1fs",
-                        job_id, i, len(combos), year, var, time.monotonic() - t0)
+                        job_id, i, len(new_combos), year, var, time.monotonic() - t0)
             ok += 1
         except asyncio.CancelledError:
             await database.finish_job(job_id, "failed", "Cancelled by user")
-            logger.info("Fetch job %d cancelled at %d/%d", job_id, i, len(combos))
+            logger.info("Fetch job %d cancelled at %d/%d", job_id, i, len(new_combos))
             raise
         except Exception as exc:
             logger.warning("Job %d [%d/%d] %d/%s failed: %s",
-                           job_id, i, len(combos), year, var, exc)
+                           job_id, i, len(new_combos), year, var, exc)
             fail += 1
 
         await database.update_job_progress(job_id, done=i, current_desc=desc)
