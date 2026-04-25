@@ -229,11 +229,19 @@ def _fetch_station_meta_from_das(fi: _FileInfo) -> dict | None:
                 m = re.search(r"geospatial_lon_min\s+([-\d.]+)", line)
                 if m:
                     lon = float(m.group(1))
-            if name is None:
-                # title: "...at StationName (AT0034G) using ..."
-                m = re.search(r"\bat (.+?) \(" + re.escape(fi.station) + r"\)", line, re.IGNORECASE)
-                if m:
-                    name = m.group(1).strip()
+            if name is None and "title" in line.lower():
+                title_m = re.search(r'String title "(.*?)"', line, re.IGNORECASE)
+                if title_m:
+                    title = title_m.group(1)
+                    # Older format: "...at Name (STATIONCODE) using ..."
+                    m = re.search(r"\bat (.+?) \(" + re.escape(fi.station) + r"\)", title, re.IGNORECASE)
+                    if m:
+                        name = m.group(1).strip()
+                    else:
+                        # Newer format: "...at Name (SubName)" with no station code
+                        m = re.search(r"\bat (.+?)(?:\s+using\s|\s*$)", title, re.IGNORECASE)
+                        if m:
+                            name = m.group(1).strip()
 
         if lat is None or lon is None:
             return None
