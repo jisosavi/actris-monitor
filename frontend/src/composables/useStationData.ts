@@ -111,6 +111,15 @@ export function useStartFetch() {
   }
 }
 
+export function useResetDb() {
+  const queryClient = useQueryClient()
+  return async () => {
+    await api.post('/db/reset')
+    await queryClient.invalidateQueries({ queryKey: ['db-status'] })
+    await queryClient.invalidateQueries({ queryKey: ['fetch-progress'] })
+  }
+}
+
 export function useCheckNewYear() {
   return useQuery<NewYearStatus>({
     queryKey: ['check-new-year'],

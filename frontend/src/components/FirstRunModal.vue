@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { Button } from '@/components/ui/button'
 import { useStartFetch, useFetchProgress } from '@/composables/useStationData'
+import { useStationsStore } from '@/stores/stations'
 import { VARIABLES, YEAR_MIN, YEAR_MAX } from '@/types'
 import type { Variable } from '@/types'
 import FetchProgressOverlay from './FetchProgressOverlay.vue'
+
+const store = useStationsStore()
+const { showDataSetup } = storeToRefs(store)
 
 const startFetch = useStartFetch()
 const { data: job } = useFetchProgress()
@@ -31,6 +36,7 @@ async function onStart() {
   try {
     const years = Array.from({ length: toYear.value - fromYear.value + 1 }, (_, i) => fromYear.value + i)
     await startFetch(years, selectedVars.value)
+    showDataSetup.value = false
   } finally {
     isStarting.value = false
   }
@@ -50,6 +56,8 @@ function toggleVar(v: Variable) {
 
     <!-- Config form -->
     <div v-else class="modal-box">
+      <button v-if="showDataSetup" class="close-btn" @click="showDataSetup = false">✕</button>
+
       <div class="modal-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="10" stroke="#303193" stroke-width="1.8" />
@@ -58,10 +66,10 @@ function toggleVar(v: Variable) {
         </svg>
       </div>
 
-      <div class="modal-title">Welcome to ACTRIS Monitor</div>
+      <div class="modal-title">Data Setup</div>
       <div class="modal-sub">
-        The local database is empty. Select the year range and variables to fetch.
-        This will take 30–90 minutes but only needs to happen once.
+        Select the year range and variables to fetch from EBAS THREDDS.
+        This will take 30–90 minutes. Existing data will be updated in place.
       </div>
 
       <div class="form-section">
@@ -120,7 +128,22 @@ function toggleVar(v: Variable) {
   z-index: 500;
   backdrop-filter: blur(4px);
 }
+.close-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.close-btn:hover { color: var(--text); background: var(--border); }
 .modal-box {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;

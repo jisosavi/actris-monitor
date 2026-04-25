@@ -13,13 +13,13 @@ import { VARIABLES } from '@/types'
 import FirstRunModal from '@/components/FirstRunModal.vue'
 
 const store = useStationsStore()
-const { selectedYear, selectedVariable } = storeToRefs(store)
+const { selectedYear, selectedVariable, showDataSetup } = storeToRefs(store)
 const varMeta = computed(() => VARIABLES[selectedVariable.value])
 
 const { data: job } = useFetchProgress()
 const { data: dbStatus } = useDbStatus()
 
-const showFirstRun = computed(() => dbStatus.value?.is_empty === true)
+const showFirstRun = computed(() => dbStatus.value?.is_empty === true || showDataSetup.value)
 const isFetching = computed(() => job.value?.status === 'running')
 </script>
 

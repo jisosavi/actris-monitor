@@ -1,17 +1,36 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
+import { storeToRefs } from 'pinia'
 import { Button } from '@/components/ui/button'
-import { api, useFetchProgress, useStartFetch, useDbStatus, useCheckNewYear } from '@/composables/useStationData'
+import { api, useFetchProgress, useStartFetch, useDbStatus, useCheckNewYear, useResetDb } from '@/composables/useStationData'
+import { useStationsStore } from '@/stores/stations'
 import { VARIABLES, YEAR_MIN, YEAR_MAX } from '@/types'
 import type { Variable } from '@/types'
 import FetchProgressOverlay from './FetchProgressOverlay.vue'
 
+const store = useStationsStore()
+const { showDataSetup } = storeToRefs(store)
+
 const queryClient = useQueryClient()
 const startFetch = useStartFetch()
+const resetDb = useResetDb()
 const { data: job } = useFetchProgress()
 const { data: dbStatus } = useDbStatus()
 const newYearQuery = useCheckNewYear()
+
+const confirmReset = ref(false)
+const resetting = ref(false)
+
+async function doReset() {
+  resetting.value = true
+  try {
+    await resetDb()
+    confirmReset.value = false
+  } finally {
+    resetting.value = false
+  }
+}
 
 const isRunning = computed(() => job.value?.status === 'running')
 const busyVar = ref<Variable | null>(null)
@@ -125,6 +144,24 @@ const coverageByVar = computed(() => {
         </template>
         <span v-else class="new-year-none">Up to date (max {{ newYearResult.current_max }})</span>
       </div>
+
+      <!-- Data setup / reset -->
+      <div class="action-row">
+        <Button size="sm" variant="outline" class="setup-btn" @click="showDataSetup = true">
+          Data setup…
+        </Button>
+      </div>
+
+      <div v-if="!confirmReset" class="action-row">
+        <button class="reset-link" @click="confirmReset = true">Reset database</button>
+      </div>
+      <div v-else class="reset-confirm">
+        <span class="reset-warn">Delete all data?</span>
+        <Button size="sm" variant="destructive" class="reset-btn" :disabled="resetting" @click="doReset">
+          {{ resetting ? 'Resetting…' : 'Yes, reset' }}
+        </Button>
+        <button class="cancel-link" @click="confirmReset = false">Cancel</button>
+      </div>
     </template>
   </div>
 </template>
@@ -166,4 +203,37 @@ const coverageByVar = computed(() => {
 .new-year-found { font-size: 11px; color: var(--accent); font-weight: 500; }
 .new-year-none { font-size: 11px; color: var(--text-muted); }
 .fetch-new-btn { font-size: 11px; }
+.action-row { margin-top: 4px; }
+.setup-btn { width: 100%; font-size: 11px; }
+.reset-link {
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.reset-link:hover { color: var(--negative); }
+.reset-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.reset-warn { font-size: 11px; color: var(--negative); font-weight: 500; }
+.reset-btn { font-size: 11px; }
+.cancel-link {
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cancel-link:hover { color: var(--text); }
 </style>

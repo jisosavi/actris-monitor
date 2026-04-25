@@ -130,6 +130,14 @@ async def start_fetch(body: FetchRequest):
     return {"started": True, "total": len(combos)}
 
 
+@app.post("/api/db/reset")
+async def reset_db():
+    if fetch_jobs.is_job_running():
+        raise HTTPException(409, "Cannot reset while a fetch job is running")
+    await database.clear_db()
+    return {"ok": True}
+
+
 @app.get("/api/check-new-year")
 async def check_new_year():
     years_by_var: dict[str, set[int]] = {}

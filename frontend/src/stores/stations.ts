@@ -8,6 +8,7 @@ export const useStationsStore = defineStore('stations', () => {
   const selectedVariable = ref<Variable>('N')
   const rankingMode = ref<RankingMode>('concentration')
   const hoveredStation = ref<Station | null>(null)
+  const showDataSetup = ref(false)
 
-  return { selectedYear, selectedVariable, rankingMode, hoveredStation }
+  return { selectedYear, selectedVariable, rankingMode, hoveredStation, showDataSetup }
 })

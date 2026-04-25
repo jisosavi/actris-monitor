@@ -242,3 +242,13 @@ async def finish_job(job_id: int, status: str, error_msg: str | None = None) -> 
             (status, _now(), error_msg, job_id),
         )
         await _db.commit()
+
+
+async def clear_db() -> None:
+    """Delete all measurement data and job history, leaving schema intact."""
+    assert _db
+    async with _write_lock:
+        for table in ("station_records", "network_stats", "fetch_jobs", "db_coverage"):
+            await _db.execute(f"DELETE FROM {table}")
+        await _db.commit()
+    logger.info("Database cleared")
