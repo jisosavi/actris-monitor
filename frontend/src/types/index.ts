@@ -43,5 +43,5 @@ export const VARIABLES: Record<Variable, { label: string; unit: string; shortLab
   },
 }
 
-export const YEAR_MIN = 2011
-export const YEAR_MAX = 2022
+export const YEAR_MIN = 2021
+export const YEAR_MAX = 2024
