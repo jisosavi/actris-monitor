@@ -31,7 +31,7 @@ VARIABLES: dict[str, dict] = {
 
 VariableKey = Literal["N", "scattering", "absorption"]
 
-WARMUP_YEARS = list(range(2024, 2019, -1))  # [2024, 2023, 2022, 2021, 2020]
+WARMUP_YEARS = list(range(2024, 2012, -1))  # 2024..2013 — display years 2014–2024 plus prev-year for delta
 
 client = EbasThreddsClient()
 

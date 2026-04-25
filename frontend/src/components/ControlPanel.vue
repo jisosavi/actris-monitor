@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { useStationsStore } from '@/stores/stations'
-import { VARIABLES, YEAR_MIN, YEAR_MAX } from '@/types'
+import { VARIABLES, YEAR_MIN, YEAR_MAX, YEAR_PRELOADED_MIN } from '@/types'
 import type { Variable } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -17,6 +20,8 @@ const { selectedYear, selectedVariable, rankingMode } = storeToRefs(store)
 
 const variables = Object.entries(VARIABLES) as [Variable, (typeof VARIABLES)[Variable]][]
 const years = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MAX - i)
+const recentYears = years.filter((y) => y >= YEAR_PRELOADED_MIN)
+const archiveYears = years.filter((y) => y < YEAR_PRELOADED_MIN)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function onYearChange(val: any) {
@@ -32,9 +37,20 @@ function onYearChange(val: any) {
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem v-for="y in years" :key="y" :value="String(y)">{{ y }}</SelectItem>
+        <SelectGroup>
+          <SelectLabel>Recent · pre-loaded</SelectLabel>
+          <SelectItem v-for="y in recentYears" :key="y" :value="String(y)">{{ y }}</SelectItem>
+        </SelectGroup>
+        <SelectSeparator />
+        <SelectGroup>
+          <SelectLabel>Archive · loads on demand</SelectLabel>
+          <SelectItem v-for="y in archiveYears" :key="y" :value="String(y)">{{ y }}</SelectItem>
+        </SelectGroup>
       </SelectContent>
     </Select>
+    <div class="year-meta">
+      {{ recentYears.length }} pre-loaded · {{ years.length }} total available
+    </div>
 
     <div class="section-label mt-5">Variable</div>
     <div class="var-list">
@@ -95,6 +111,12 @@ function onYearChange(val: any) {
   background: var(--surface);
   border-color: var(--border);
   color: var(--text);
+}
+
+.year-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 6px;
 }
 
 .var-list { display: flex; flex-direction: column; gap: 5px; }
