@@ -33,10 +33,10 @@ const sorted = computed<Station[]>(() => {
   return [...data].sort((a, b) => (b.mean ?? 0) - (a.mean ?? 0))
 })
 
-const MAX_VISIBLE = 20
+const VISIBLE = 10
 
 const option = computed(() => {
-  const stations = sorted.value.slice(0, MAX_VISIBLE)
+  const stations = sorted.value
   const names = stations.map((s) =>
     s.name && s.name !== s.id ? `${s.name} / ${s.id}` : s.id,
   )
@@ -46,6 +46,7 @@ const option = computed(() => {
       : stations.map((s) => s.delta_pct ?? 0)
 
   const isConcentration = rankingMode.value === 'concentration'
+  const n = stations.length
 
   return {
     backgroundColor: 'transparent',
@@ -57,7 +58,7 @@ const option = computed(() => {
       textStyle: { color: '#e2e8f0', fontSize: 12 },
       formatter: (params: any[]) => {
         const p = params[0]
-        const station = stations[p.dataIndex as number]
+        const station = stations[n - 1 - (p.dataIndex as number)]
         if (!station) return p.name as string
         const val = isConcentration
           ? `${(p.value as number).toFixed(1)} ${unit.value}`
@@ -72,7 +73,19 @@ const option = computed(() => {
         return `<b>${label}</b><br/>${val}${delta}`
       },
     },
-    grid: { left: 6, right: 20, top: 6, bottom: 30, containLabel: true },
+    grid: { left: 6, right: 20, top: 6, bottom: 6, containLabel: true },
+    dataZoom: [
+      {
+        type: 'inside',
+        yAxisIndex: 0,
+        startValue: Math.max(0, n - VISIBLE),
+        endValue: n - 1,
+        zoomOnMouseWheel: false,
+        moveOnMouseWheel: true,
+        moveOnMouseMove: false,
+        filterMode: 'empty',
+      },
+    ],
     xAxis: {
       type: 'value',
       axisLine: { lineStyle: { color: '#1e3052' } },
