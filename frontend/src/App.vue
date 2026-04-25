@@ -8,11 +8,15 @@ import RankingChart from '@/components/RankingChart.vue'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useStationsStore } from '@/stores/stations'
+import { useWarmupStatus } from '@/composables/useStationData'
 import { VARIABLES } from '@/types'
 
 const store = useStationsStore()
 const { selectedYear, selectedVariable } = storeToRefs(store)
 const varMeta = computed(() => VARIABLES[selectedVariable.value])
+
+const warmupQuery = useWarmupStatus()
+const warmup = computed(() => warmupQuery.data.value)
 </script>
 
 <template>
@@ -35,6 +39,13 @@ const varMeta = computed(() => VARIABLES[selectedVariable.value])
         <Badge variant="outline" class="badge-var">{{ varMeta.shortLabel }}</Badge>
         <Badge variant="outline" class="badge-unit">{{ varMeta.unit }}</Badge>
       </div>
+
+      <Transition name="warmup-fade">
+        <div v-if="warmup && !warmup.complete" class="warmup-indicator">
+          <span class="warmup-dot" />
+          <span class="warmup-label">Caching {{ warmup.done }}/{{ warmup.total }}</span>
+        </div>
+      </Transition>
 
       <div class="header-right">
         <a href="https://www.actris.eu" target="_blank" rel="noopener" class="header-link">
@@ -133,6 +144,34 @@ const varMeta = computed(() => VARIABLES[selectedVariable.value])
   color: var(--text-muted);
   border-color: var(--border);
 }
+
+.warmup-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+}
+.warmup-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.7;
+  animation: warmup-pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.warmup-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@keyframes warmup-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.9); }
+  50%       { opacity: 0.8;  transform: scale(1.1); }
+}
+.warmup-fade-enter-active, .warmup-fade-leave-active { transition: opacity 0.4s ease; }
+.warmup-fade-enter-from, .warmup-fade-leave-to { opacity: 0; }
 
 .header-right {
   display: flex;

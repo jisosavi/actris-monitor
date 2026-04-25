@@ -1,4 +1,8 @@
 from __future__ import annotations
+import asyncio
+import logging
+import time
+import os as _os
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -7,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ebas_thredds import EbasThreddsClient
 from aggregation import compute_annual_stats, compute_network_stats
+
+logger = logging.getLogger(__name__)
 
 VARIABLES: dict[str, dict] = {
     "N": {
@@ -25,19 +31,59 @@ VARIABLES: dict[str, dict] = {
 
 VariableKey = Literal["N", "scattering", "absorption"]
 
+WARMUP_YEARS = list(range(2024, 2019, -1))  # [2024, 2023, 2022, 2021, 2020]
+
 client = EbasThreddsClient()
+
+_warmup_progress = {"done": 0, "total": 0, "complete": False}
+_warmup_task: asyncio.Task | None = None
+
+
+async def _warmup_cache() -> None:
+    combos = [(y, v) for v in VARIABLES for y in WARMUP_YEARS]
+    _warmup_progress["total"] = len(combos)
+    _warmup_progress["done"] = 0
+    _warmup_progress["complete"] = False
+
+    logger.info("Cache warmup starting: %d combinations", len(combos))
+    ok = fail = 0
+
+    for i, (year, var) in enumerate(combos, 1):
+        t0 = time.monotonic()
+        logger.info("Warmup [%d/%d] year=%d variable=%s ...", i, len(combos), year, var)
+        try:
+            await client.fetch_measurements(year, var)
+            logger.info("Warmup [%d/%d] done in %.1fs", i, len(combos), time.monotonic() - t0)
+            ok += 1
+        except asyncio.CancelledError:
+            logger.info("Warmup cancelled at [%d/%d]", i, len(combos))
+            raise
+        except Exception as exc:
+            logger.warning("Warmup [%d/%d] failed: %s", i, len(combos), exc)
+            fail += 1
+        _warmup_progress["done"] = i
+
+    _warmup_progress["complete"] = True
+    logger.info("Warmup complete: %d ok, %d failed", ok, fail)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _warmup_task
     await client.start()
+    _warmup_task = asyncio.create_task(_warmup_cache(), name="cache-warmup")
     yield
+    if _warmup_task and not _warmup_task.done():
+        _warmup_task.cancel()
+        try:
+            await _warmup_task
+        except (asyncio.CancelledError, Exception):
+            pass
     await client.close()
 
 
 app = FastAPI(title="ACTRIS Monitor API", version="0.1.0", lifespan=lifespan)
 
-import os as _os
 _ALLOWED_ORIGINS = _os.environ.get("ALLOWED_ORIGIN", "*")
 _ORIGINS_LIST = [o.strip() for o in _ALLOWED_ORIGINS.split(",")] if _ALLOWED_ORIGINS != "*" else ["*"]
 
@@ -72,6 +118,11 @@ async def get_network_stats(year: int, variable: VariableKey):
     return compute_network_stats(stations, year, variable)
 
 
+@app.get("/api/warmup-status")
+async def get_warmup_status():
+    return _warmup_progress
+
+
 @app.get("/api/variables")
 async def list_variables():
     return [{"key": k, **{f: v[f] for f in ("label", "unit")}} for k, v in VARIABLES.items()]
@@ -83,7 +134,6 @@ async def health():
 
 
 async def _fetch_pair(year: int, variable: str) -> tuple[list[dict], list[dict]]:
-    import asyncio
     raw, prev_raw = await asyncio.gather(
         client.fetch_measurements(year, variable),
         client.fetch_measurements(year - 1, variable),

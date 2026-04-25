@@ -5,6 +5,12 @@ import axios from 'axios'
 import { useStationsStore } from '@/stores/stations'
 import type { Station, NetworkStats } from '@/types'
 
+export interface WarmupStatus {
+  done: number
+  total: number
+  complete: boolean
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL
     ?? (import.meta.env.DEV ? 'http://localhost:8000/api' : '/api'),
@@ -35,4 +41,13 @@ export function useStationData() {
   })
 
   return { stationsQuery, statsQuery }
+}
+
+export function useWarmupStatus() {
+  return useQuery<WarmupStatus>({
+    queryKey: ['warmup-status'],
+    queryFn: () => api.get<WarmupStatus>('/warmup-status').then((r) => r.data),
+    refetchInterval: (query) => (query.state.data?.complete ? false : 4000),
+    staleTime: 0,
+  })
 }

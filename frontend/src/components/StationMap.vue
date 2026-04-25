@@ -18,6 +18,7 @@ const { stationsQuery } = useStationData()
 
 const elapsed = ref(0)
 const lastLoadTime = ref<number | null>(null)
+const dataTimestamp = ref<string | null>(null)
 let timerInterval: ReturnType<typeof setInterval> | null = null
 let fetchStart = 0
 
@@ -31,6 +32,12 @@ watch(() => stationsQuery.isFetching.value, (fetching) => {
   } else {
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null }
     if (fetchStart > 0) lastLoadTime.value = Math.floor((Date.now() - fetchStart) / 1000)
+  }
+})
+
+watch(() => stationsQuery.data.value, (data) => {
+  if (data?.length) {
+    dataTimestamp.value = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   }
 })
 
@@ -204,6 +211,7 @@ onUnmounted(() => {
         <span v-if="rankingMode === 'concentration'">High</span>
         <span v-else style="color: var(--negative)">Increase</span>
       </div>
+      <div v-if="dataTimestamp" class="legend-timestamp">Updated {{ dataTimestamp }}</div>
     </div>
 
     <!-- Loading veil -->
@@ -276,6 +284,7 @@ onUnmounted(() => {
 .legend-bar--conc { background: linear-gradient(to right, #303193, #e6a000, #bf3030); }
 .legend-bar--delta { background: linear-gradient(to right, #1a7a52, #c8ccd8, #bf3030); }
 .legend-ticks { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--text-muted); }
+.legend-timestamp { margin-top: 7px; font-size: 10px; color: var(--text-muted); opacity: 0.7; }
 
 .loading-veil {
   position: absolute;
