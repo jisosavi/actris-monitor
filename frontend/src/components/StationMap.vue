@@ -185,6 +185,10 @@ onUnmounted(() => {
             : hoveredStation.id }}
         </div>
         <div class="tooltip-country">{{ hoveredStation.country }}</div>
+        <div class="tooltip-coords">
+          {{ hoveredStation.lat >= 0 ? hoveredStation.lat.toFixed(3) + '°N' : Math.abs(hoveredStation.lat).toFixed(3) + '°S' }},
+          {{ hoveredStation.lon >= 0 ? hoveredStation.lon.toFixed(3) + '°E' : Math.abs(hoveredStation.lon).toFixed(3) + '°W' }}
+        </div>
         <div v-if="hoveredStation.mean !== null" class="tooltip-row">
           <div>
             <div class="tooltip-sub">Annual mean</div>
@@ -269,7 +273,8 @@ onUnmounted(() => {
   box-shadow: 0 4px 16px rgba(48, 49, 147, 0.10);
 }
 .tooltip-name { font-size: 14px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
-.tooltip-country { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; }
+.tooltip-country { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+.tooltip-coords { font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-bottom: 10px; font-family: monospace; }
 .tooltip-row { display: flex; gap: 20px; }
 .tooltip-sub { font-size: 10px; color: var(--text-muted); margin-bottom: 2px; }
 .tooltip-val { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
