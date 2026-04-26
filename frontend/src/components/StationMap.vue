@@ -5,7 +5,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox'
 import { ScatterplotLayer } from '@deck.gl/layers'
 import { storeToRefs } from 'pinia'
 import { useStationsStore } from '@/stores/stations'
-import { useStationData } from '@/composables/useStationData'
+import { useStationData, useFilteredStations } from '@/composables/useStationData'
 import type { Station } from '@/types'
 
 const mapContainer = ref<HTMLDivElement | null>(null)
@@ -15,6 +15,7 @@ const overlay = shallowRef<MapboxOverlay | null>(null)
 const store = useStationsStore()
 const { rankingMode, hoveredStation } = storeToRefs(store)
 const { stationsQuery } = useStationData()
+const filteredStations = useFilteredStations()
 
 const elapsed = ref(0)
 const lastLoadTime = ref<number | null>(null)
@@ -148,13 +149,13 @@ onMounted(() => {
   map.value.addControl(overlay.value as unknown as maplibregl.IControl)
 
   watch(
-    () => stationsQuery.data.value,
+    filteredStations,
     (stations) => { if (stations?.length) refresh(stations) },
     { immediate: true },
   )
 
   watch(rankingMode, () => {
-    if (stationsQuery.data.value?.length) refresh(stationsQuery.data.value)
+    if (filteredStations.value?.length) refresh(filteredStations.value)
   })
 })
 

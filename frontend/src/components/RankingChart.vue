@@ -11,7 +11,7 @@ import {
 import { CanvasRenderer } from 'echarts/renderers'
 import { storeToRefs } from 'pinia'
 import { useStationsStore } from '@/stores/stations'
-import { useStationData } from '@/composables/useStationData'
+import { useStationData, useFilteredStations } from '@/composables/useStationData'
 import { VARIABLES } from '@/types'
 import type { Station } from '@/types'
 
@@ -20,11 +20,12 @@ use([BarChart, GridComponent, TooltipComponent, DataZoomComponent, CanvasRendere
 const store = useStationsStore()
 const { rankingMode, selectedVariable } = storeToRefs(store)
 const { stationsQuery } = useStationData()
+const filteredStations = useFilteredStations()
 
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
 
 const sorted = computed<Station[]>(() => {
-  const data = (stationsQuery.data.value ?? []).filter((s) => s.mean !== null)
+  const data = filteredStations.value.filter((s) => s.mean !== null)
   if (rankingMode.value === 'delta') {
     return [...data]
       .filter((s) => s.delta_pct !== null)

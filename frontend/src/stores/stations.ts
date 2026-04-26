@@ -9,6 +9,7 @@ export const useStationsStore = defineStore('stations', () => {
   const rankingMode = ref<RankingMode>('concentration')
   const hoveredStation = ref<Station | null>(null)
   const showDataSetup = ref(false)
+  const networkFilter = ref<string[]>([])
 
-  return { selectedYear, selectedVariable, rankingMode, hoveredStation, showDataSetup }
+  return { selectedYear, selectedVariable, rankingMode, hoveredStation, showDataSetup, networkFilter }
 })

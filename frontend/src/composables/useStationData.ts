@@ -5,6 +5,7 @@ import axios from 'axios'
 import { useStationsStore } from '@/stores/stations'
 import type { Station, NetworkStats } from '@/types'
 
+
 export interface WarmupStatus {
   done: number
   total: number
@@ -126,6 +127,22 @@ export function useCheckNewYear() {
     queryFn: () => api.get<NewYearStatus>('/check-new-year').then((r) => r.data),
     staleTime: 1000 * 60 * 10,
     enabled: false, // only fetch when explicitly triggered
+  })
+}
+
+export function useFilteredStations() {
+  const store = useStationsStore()
+  const { networkFilter } = storeToRefs(store)
+  const { stationsQuery } = useStationData()
+
+  return computed(() => {
+    const all = stationsQuery.data.value ?? []
+    if (networkFilter.value.length === 0) return all
+    return all.filter((s) => {
+      if (!s.networks) return false
+      const nets = new Set(s.networks.split(','))
+      return networkFilter.value.some((n) => nets.has(n))
+    })
   })
 }
 

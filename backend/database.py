@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS station_records (
     country       TEXT    NOT NULL,
     mean          REAL,
     data_coverage REAL    NOT NULL DEFAULT 0.0,
+    networks      TEXT    NOT NULL DEFAULT '',
     fetched_at    TEXT    NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_lookup
@@ -73,6 +74,20 @@ CREATE TABLE IF NOT EXISTS db_coverage (
 """
 
 
+async def _migrate_add_networks() -> None:
+    assert _db
+    async with _db.execute("PRAGMA table_info(station_records)") as cur:
+        rows = await cur.fetchall()
+    cols = {r["name"] for r in rows}
+    if "networks" not in cols:
+        async with _write_lock:
+            await _db.execute(
+                "ALTER TABLE station_records ADD COLUMN networks TEXT NOT NULL DEFAULT ''"
+            )
+            await _db.commit()
+        logger.info("Migrated station_records: added networks column")
+
+
 async def init_db(path: str) -> None:
     global _db
     os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
@@ -85,6 +100,7 @@ async def init_db(path: str) -> None:
         if stmt:
             await _db.execute(stmt)
     await _db.commit()
+    await _migrate_add_networks()
     await _mark_orphaned_jobs_failed()
     logger.info("Database initialised at %s", path)
 
@@ -116,7 +132,7 @@ async def _mark_orphaned_jobs_failed() -> None:
 async def get_station_records(year: int, variable: str) -> list[dict]:
     assert _db
     async with _db.execute(
-        "SELECT station_id, name, lat, lon, country, mean, data_coverage "
+        "SELECT station_id, name, lat, lon, country, mean, data_coverage, networks "
         "FROM station_records WHERE year=? AND variable=?",
         (year, variable),
     ) as cur:
@@ -130,6 +146,7 @@ async def get_station_records(year: int, variable: str) -> list[dict]:
             "country":       r["country"],
             "mean":          r["mean"],
             "data_coverage": r["data_coverage"],
+            "networks":      r["networks"],
         }
         for r in rows
     ]
@@ -185,11 +202,12 @@ async def upsert_station_records(year: int, variable: str, records: list[dict]) 
     async with _write_lock:
         await _db.executemany(
             "INSERT OR REPLACE INTO station_records "
-            "(year, variable, station_id, name, lat, lon, country, mean, data_coverage, fetched_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(year, variable, station_id, name, lat, lon, country, mean, data_coverage, networks, fetched_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (year, variable, r["id"], r["name"], r["lat"], r["lon"],
-                 r["country"], r.get("mean"), r.get("data_coverage", 0.0), now)
+                 r["country"], r.get("mean"), r.get("data_coverage", 0.0),
+                 r.get("networks", ""), now)
                 for r in records
             ],
         )

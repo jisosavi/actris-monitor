@@ -138,6 +138,7 @@ class EbasThreddsClient:
                 "country":       meta["country"],
                 "mean":          float(np.mean(values)) if values else None,
                 "data_coverage": 1.0 if values else 0.0,
+                "networks":      meta.get("networks", ""),
             })
 
         self._set_cached(key, records)
@@ -255,6 +256,9 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
         resp = await client.get(url, timeout=30.0)
         text = resp.text
 
+        KNOWN_NETWORKS = {"ACTRIS", "EMEP", "GAW-WDCA"}
+        networks = ""
+
         lat = lon = name = None
         for line in text.split("\n"):
             if lat is None:
@@ -276,15 +280,22 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
                         m = re.search(r"\bat (.+?)(?:\s+using\s|\s*$)", title, re.IGNORECASE)
                         if m:
                             name = m.group(1).strip()
+            if not networks:
+                m = re.search(r'String project "(.*?)"', line, re.IGNORECASE)
+                if m:
+                    found = [p.strip() for p in m.group(1).split(',') if p.strip() in KNOWN_NETWORKS]
+                    if found:
+                        networks = ','.join(found)
 
         if lat is None or lon is None:
             return None
 
         return {
-            "name":    name or fi.station,
-            "lat":     lat,
-            "lon":     lon,
-            "country": fi.station[:2].upper(),
+            "name":     name or fi.station,
+            "lat":      lat,
+            "lon":      lon,
+            "country":  fi.station[:2].upper(),
+            "networks": networks,
         }
     except Exception:
         return None

@@ -58,6 +58,7 @@ def compute_annual_stats(
             "delta_pct":     delta_pct,
             "prev_mean":     round(prev, 3) if prev is not None else None,
             "data_coverage": round(float(row["data_coverage"]), 3),
+            "networks":      str(row.get("networks", "")),
         })
 
     return sorted(records, key=lambda x: (x["mean"] is not None, x["mean"] or 0), reverse=True)

@@ -16,8 +16,16 @@ import {
 } from '@/components/ui/select'
 
 const store = useStationsStore()
-const { selectedYear, selectedVariable, rankingMode } = storeToRefs(store)
+const { selectedYear, selectedVariable, rankingMode, networkFilter } = storeToRefs(store)
 const { data: dbStatus } = useDbStatus()
+
+const NETWORKS = ['ACTRIS', 'EMEP', 'GAW-WDCA'] as const
+
+function toggleNetwork(net: string) {
+  const idx = networkFilter.value.indexOf(net)
+  if (idx >= 0) networkFilter.value.splice(idx, 1)
+  else networkFilter.value.push(net)
+}
 
 const variables = Object.entries(VARIABLES) as [Variable, (typeof VARIABLES)[Variable]][]
 const years = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MAX - i)
@@ -103,6 +111,21 @@ function onYearChange(val: any) {
         Annual change
       </Button>
     </div>
+
+    <div class="section-label mt-5">Network</div>
+    <div class="net-filter">
+      <button
+        v-for="net in NETWORKS"
+        :key="net"
+        :class="['net-btn', networkFilter.includes(net) && 'net-btn--on']"
+        @click="toggleNetwork(net)"
+      >
+        {{ net }}
+      </button>
+    </div>
+    <div v-if="networkFilter.length > 0" class="net-hint">
+      Showing {{ networkFilter.join(' + ') }} stations only
+    </div>
   </div>
 </template>
 
@@ -174,4 +197,30 @@ function onYearChange(val: any) {
 
 .toggle-group { display: flex; gap: 6px; }
 .toggle-btn { flex: 1; font-size: 11px; }
+
+.net-filter { display: flex; flex-direction: column; gap: 4px; }
+.net-btn {
+  padding: 7px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.net-btn:hover { border-color: var(--accent); color: var(--text); }
+.net-btn--on {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
+}
+.net-hint {
+  font-size: 10px;
+  color: var(--accent);
+  margin-top: 2px;
+}
 </style>

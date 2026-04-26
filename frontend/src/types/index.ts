@@ -9,6 +9,7 @@ export interface Station {
   delta_pct: number | null
   prev_mean: number | null
   data_coverage: number
+  networks: string
 }
 
 export interface NetworkStats {

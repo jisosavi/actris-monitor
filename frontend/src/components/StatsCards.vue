@@ -1,20 +1,40 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useStationData } from '@/composables/useStationData'
+import { useFilteredStations } from '@/composables/useStationData'
 import { useStationsStore } from '@/stores/stations'
 import { storeToRefs } from 'pinia'
 import { VARIABLES } from '@/types'
 import { Card, CardContent } from '@/components/ui/card'
 
-const { statsQuery, stationsQuery } = useStationData()
 const store = useStationsStore()
-const { selectedVariable } = storeToRefs(store)
+const { selectedVariable, networkFilter } = storeToRefs(store)
+const filteredStations = useFilteredStations()
 
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
-const s = computed(() => statsQuery.data.value)
 
-const totalStations = computed(() => stationsQuery.data.value?.length ?? 0)
-const withData = computed(() => stationsQuery.data.value?.filter(s => s.mean !== null).length ?? 0)
+const filteredStats = computed(() => {
+  const values = filteredStations.value
+    .filter(s => s.mean !== null)
+    .map(s => s.mean as number)
+    .sort((a, b) => a - b)
+  if (values.length === 0) return null
+  const pct = (p: number) => {
+    const idx = (p / 100) * (values.length - 1)
+    const lo = Math.floor(idx); const hi = Math.ceil(idx)
+    return values[lo] + (values[hi] - values[lo]) * (idx - lo)
+  }
+  return {
+    median: pct(50),
+    q1: pct(25),
+    q3: pct(75),
+    min: values[0],
+    max: values[values.length - 1],
+    n_stations: values.length,
+  }
+})
+
+const totalStations = computed(() => filteredStations.value.length)
+const withData = computed(() => filteredStations.value.filter(s => s.mean !== null).length)
 const withoutData = computed(() => totalStations.value - withData.value)
 
 function fmt(v: number | null | undefined, decimals = 1): string {
@@ -27,13 +47,11 @@ function fmt(v: number | null | undefined, decimals = 1): string {
   <div class="stats-section">
     <div class="section-label">Network statistics</div>
 
-    <div v-if="statsQuery.isFetching.value && !s" class="loading-text">Loading…</div>
-
-    <div v-else class="cards-grid">
+    <div class="cards-grid">
       <Card class="stat-card stat-card--median">
         <CardContent class="stat-content">
           <div class="stat-label">Median</div>
-          <div class="stat-value">{{ fmt(s?.median) }}</div>
+          <div class="stat-value">{{ fmt(filteredStats?.median) }}</div>
           <div class="stat-unit">{{ unit }}</div>
         </CardContent>
       </Card>
@@ -41,7 +59,7 @@ function fmt(v: number | null | undefined, decimals = 1): string {
       <Card class="stat-card stat-card--iqr">
         <CardContent class="stat-content">
           <div class="stat-label">IQR</div>
-          <div class="stat-value stat-value--sm">{{ fmt(s?.q1) }}–{{ fmt(s?.q3) }}</div>
+          <div class="stat-value stat-value--sm">{{ fmt(filteredStats?.q1) }}–{{ fmt(filteredStats?.q3) }}</div>
           <div class="stat-unit">{{ unit }}</div>
         </CardContent>
       </Card>
@@ -49,7 +67,7 @@ function fmt(v: number | null | undefined, decimals = 1): string {
       <Card class="stat-card stat-card--max">
         <CardContent class="stat-content">
           <div class="stat-label">Max</div>
-          <div class="stat-value">{{ fmt(s?.max) }}</div>
+          <div class="stat-value">{{ fmt(filteredStats?.max) }}</div>
           <div class="stat-unit">{{ unit }}</div>
         </CardContent>
       </Card>
@@ -57,7 +75,7 @@ function fmt(v: number | null | undefined, decimals = 1): string {
       <Card class="stat-card stat-card--min">
         <CardContent class="stat-content">
           <div class="stat-label">Min</div>
-          <div class="stat-value">{{ fmt(s?.min) }}</div>
+          <div class="stat-value">{{ fmt(filteredStats?.min) }}</div>
           <div class="stat-unit">{{ unit }}</div>
         </CardContent>
       </Card>
@@ -76,6 +94,9 @@ function fmt(v: number | null | undefined, decimals = 1): string {
         <span class="count-dot count-dot--nodata" />
         <span>{{ withoutData }} no data this year</span>
       </div>
+    </div>
+    <div v-if="networkFilter.length > 0" class="filter-note">
+      Filtered to {{ networkFilter.join(', ') }}
     </div>
   </div>
 </template>
@@ -159,4 +180,6 @@ function fmt(v: number | null | undefined, decimals = 1): string {
 .count-dot--total  { background: var(--accent); }
 .count-dot--data   { background: var(--positive); }
 .count-dot--nodata { background: var(--text-muted); opacity: 0.5; }
+
+.filter-note { font-size: 10px; color: var(--accent); margin-top: 6px; }
 </style>
