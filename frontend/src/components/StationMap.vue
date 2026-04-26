@@ -13,7 +13,7 @@ const map = shallowRef<maplibregl.Map | null>(null)
 const overlay = shallowRef<MapboxOverlay | null>(null)
 
 const store = useStationsStore()
-const { rankingMode, hoveredStation } = storeToRefs(store)
+const { rankingMode, hoveredStation, networkFilter } = storeToRefs(store)
 const { stationsQuery } = useStationData()
 const filteredStations = useFilteredStations()
 
@@ -99,13 +99,18 @@ function buildLayer(stations: Station[]) {
       const t = Math.max(0, Math.min(1, (d.mean - lo) / (hi - lo || 1)))
       return 18000 + t * 70000
     },
-    getFillColor: (d) =>
-      rankingMode.value === 'delta'
+    getFillColor: (d) => {
+      if (networkFilter.value.length > 0 && !d.networks) return [140, 148, 165, 120]
+      return rankingMode.value === 'delta'
         ? deltaColor(d.delta_pct)
         : d.mean
         ? concColor(d.mean, lo, hi)
-        : [100, 116, 139, 160],
-    getLineColor: [255, 255, 255, 60],
+        : [100, 116, 139, 160]
+    },
+    getLineColor: (d) =>
+      networkFilter.value.length > 0 && !d.networks
+        ? [140, 148, 165, 80]
+        : [255, 255, 255, 60],
     getLineWidth: 1200,
     lineWidthMinPixels: 1,
     radiusMinPixels: 5,
@@ -115,7 +120,8 @@ function buildLayer(stations: Station[]) {
       store.hoveredStation = (object as Station) ?? null
     },
     updateTriggers: {
-      getFillColor: rankingMode.value,
+      getFillColor: [rankingMode.value, networkFilter.value.length],
+      getLineColor: networkFilter.value.length,
       getRadius: rankingMode.value,
     },
   })
@@ -198,6 +204,9 @@ onUnmounted(() => {
           </div>
         </div>
         <div v-else class="tooltip-nodata">No data for selected year</div>
+        <div v-if="networkFilter.length > 0 && !hoveredStation.networks" class="tooltip-unknown-net">
+          Network affiliation unknown
+        </div>
         <div v-if="hoveredStation.mean !== null" class="tooltip-coverage">
           Coverage {{ (hoveredStation.data_coverage * 100).toFixed(0) }}%
         </div>
@@ -269,6 +278,7 @@ onUnmounted(() => {
 .delta-up { color: var(--negative); }
 .delta-dn { color: var(--positive); }
 .tooltip-nodata { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-style: italic; }
+.tooltip-unknown-net { font-size: 10px; color: var(--text-muted); margin-top: 6px; font-style: italic; }
 .tooltip-coverage { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
 
 .legend {

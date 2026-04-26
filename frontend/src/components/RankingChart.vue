@@ -18,7 +18,7 @@ import type { Station } from '@/types'
 use([BarChart, GridComponent, TooltipComponent, DataZoomComponent, CanvasRenderer])
 
 const store = useStationsStore()
-const { rankingMode, selectedVariable } = storeToRefs(store)
+const { rankingMode, selectedVariable, networkFilter } = storeToRefs(store)
 const { stationsQuery } = useStationData()
 const filteredStations = useFilteredStations()
 
@@ -56,6 +56,28 @@ const option = computed(() => {
 
   const isConcentration = rankingMode.value === 'concentration'
   const n = stations.length
+  const filterActive = networkFilter.value.length > 0
+
+  const reversedStations = [...stations].reverse()
+  const reversedValues = [...values].reverse()
+
+  const seriesData = reversedStations.map((s, i) => {
+    const v = reversedValues[i]!
+    const unknown = filterActive && !s.networks
+    if (unknown) {
+      return { value: v, itemStyle: { color: 'rgba(100, 116, 139, 0.45)', borderRadius: [0, 3, 3, 0] } }
+    }
+    if (isConcentration) return v
+    return {
+      value: v,
+      itemStyle: {
+        color: v > 0
+          ? { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#f43f5e' }, { offset: 1, color: '#fb7185' }] }
+          : { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#10b981' }, { offset: 1, color: '#34d399' }] },
+        borderRadius: [0, 3, 3, 0],
+      },
+    }
+  })
 
   return {
     backgroundColor: 'transparent',
@@ -79,7 +101,10 @@ const option = computed(() => {
         const label = station.name && station.name !== station.id
           ? `${station.name} / ${station.id}`
           : station.id
-        return `<b>${label}</b><br/>${val}${delta}`
+        const unknownNet = filterActive && !station.networks
+          ? '<br/><span style="color:#64748b;font-size:10px;font-style:italic">Network affiliation unknown</span>'
+          : ''
+        return `<b>${label}</b><br/>${val}${delta}${unknownNet}`
       },
     },
     grid: { left: labelWidth + 8, right: 30, top: 6, bottom: 6, containLabel: false },
@@ -135,17 +160,7 @@ const option = computed(() => {
     series: [
       {
         type: 'bar',
-        data: isConcentration
-          ? [...values].reverse()
-          : [...values].reverse().map((v) => ({
-              value: v,
-              itemStyle: {
-                color:
-                  v > 0
-                    ? { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#f43f5e' }, { offset: 1, color: '#fb7185' }] }
-                    : { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#10b981' }, { offset: 1, color: '#34d399' }] },
-              },
-            })),
+        data: seriesData,
         itemStyle: isConcentration
           ? {
               color: {

@@ -148,7 +148,7 @@ export function useFilteredStations() {
     const all = stationsQuery.data.value ?? []
     if (networkFilter.value.length === 0) return all
     return all.filter((s) => {
-      if (!s.networks) return false
+      if (!s.networks) return true  // unknown affiliation: always include, styled differently
       const nets = new Set(s.networks.split(','))
       return networkFilter.value.some((n) => nets.has(n))
     })
