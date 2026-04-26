@@ -16,6 +16,14 @@ For inspiration, thanks to research professor Antti Hyvärinen / Finnish Meteoro
 
 **Absorption Coefficient (σ_ap, 550 nm)** — Aerosol light absorption at 550 nm measured by filter absorption photometers. Indicator of black carbon and light-absorbing aerosol loading.
 
+## Screenshots
+
+![Map view showing station concentrations with network filter and hover tooltip](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
+*Main map view — station concentrations for 2011 N variable, all three network filters active, Pallas (Sammaltunturi) tooltip open*
+
+![Data Setup panel for fetching and managing measurement data](docs/Actris%20Monitor%20-%20Data%20Setup%20View.jpg)
+*Data Setup panel — year range selection, per-variable refresh, network metadata backfill*
+
 ## Interface
 
 The dashboard renders a full-screen map (MapLibre GL + deck.gl ScatterplotLayer) where each station appears as a circle coloured either by absolute concentration value (low–high gradient) or by annual change (green = decrease, red = increase). Stations with unknown network affiliation are shown as grey when a network filter is active.
