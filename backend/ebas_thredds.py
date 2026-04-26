@@ -192,30 +192,58 @@ class EbasThreddsClient:
         """
         Re-fetch .das metadata for all given station_ids.
         Returns {station_id: {lat, lon, networks}} for every station found in catalog.
-        Fetches one .das file per station — no measurement data downloaded.
+
+        Picks one file per unique instrument type per station (max 5) so that
+        measurements submitted under different frameworks (EMEP, GAW-WDCA, ACTRIS)
+        are all captured — each submission can have a different 'project' value.
+        Networks from all files are merged via set union.
         """
         catalog = await self._get_catalog()
         actris_dc_names = await self._get_actris_dc_names()
 
-        rep_files: dict[str, _FileInfo] = {}
+        station_ids_set = set(station_ids)
+        station_files: dict[str, list[_FileInfo]] = {}
         for fi in catalog:
-            if fi.station in station_ids and fi.station not in rep_files:
-                rep_files[fi.station] = fi
+            if fi.station not in station_ids_set:
+                continue
+            files = station_files.setdefault(fi.station, [])
+            # One file per instrument keeps request count low while covering
+            # all frameworks (each instrument submission may use a different one).
+            if len(files) < 5 and fi.instrument not in {f.instrument for f in files}:
+                files.append(fi)
 
-        if not rep_files:
+        if not station_files:
             return {}
 
         sem = asyncio.Semaphore(_MAX_CONCURRENT)
         assert self._http
         client = self._http
 
-        async def _fetch_one(station_id: str) -> tuple[str, dict | None]:
+        async def _fetch_file(fi: _FileInfo) -> tuple[str, dict | None]:
             async with sem:
-                meta = await _fetch_station_meta_from_das(client, rep_files[station_id], actris_dc_names)
-            return station_id, meta
+                return fi.station, await _fetch_station_meta_from_das(client, fi, actris_dc_names)
 
-        results = await asyncio.gather(*[_fetch_one(sid) for sid in rep_files])
-        return {sid: meta for sid, meta in results if meta}
+        all_results = await asyncio.gather(*[
+            _fetch_file(fi)
+            for files in station_files.values()
+            for fi in files
+        ])
+
+        # First successful result per station provides name/lat/lon/country;
+        # subsequent results from the same station only contribute their networks.
+        merged: dict[str, dict] = {}
+        for station_id, meta in all_results:
+            if meta is None:
+                continue
+            if station_id not in merged:
+                merged[station_id] = {**meta}
+            else:
+                existing = {n for n in merged[station_id]["networks"].split(",") if n}
+                new_nets = {n for n in meta["networks"].split(",") if n}
+                combined = sorted(existing | new_nets)
+                merged[station_id]["networks"] = ",".join(combined)
+
+        return merged
 
     async def get_catalog_years(self, variable: str) -> set[int]:
         """Return all years that have data for a given variable in the catalog."""
