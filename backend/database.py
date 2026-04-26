@@ -129,6 +129,19 @@ async def _mark_orphaned_jobs_failed() -> None:
 
 # ── Read helpers ──────────────────────────────────────────────────────────────
 
+async def get_station_records_for_id(station_id: str) -> list[dict]:
+    assert _db
+    async with _db.execute(
+        "SELECT station_id, name, lat, lon, country, networks "
+        "FROM station_records WHERE station_id = ? LIMIT 1",
+        (station_id,),
+    ) as cur:
+        rows = await cur.fetchall()
+    return [{"id": r["station_id"], "name": r["name"], "lat": r["lat"],
+             "lon": r["lon"], "country": r["country"], "networks": r["networks"]}
+            for r in rows]
+
+
 async def get_station_records(year: int, variable: str) -> list[dict]:
     assert _db
     async with _db.execute(

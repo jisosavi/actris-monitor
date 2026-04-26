@@ -162,6 +162,39 @@ async def backfill_networks():
         _backfill_running = False
 
 
+@app.get("/api/debug/station/{station_id}")
+async def debug_station(station_id: str):
+    """Return stored DB coordinates + raw .das geographic attributes for a station."""
+    rows = await database.get_station_records_for_id(station_id)
+    if not rows:
+        raise HTTPException(404, f"Station '{station_id}' not in database")
+
+    catalog = await client._get_catalog()
+    fi = next((f for f in catalog if f.station == station_id), None)
+
+    das_info: dict = {}
+    if fi and client._http:
+        from ebas_thredds import OPENDAP_BASE
+        url = f"{OPENDAP_BASE}/{fi.name}.das"
+        try:
+            resp = await client._http.get(url, timeout=30.0)
+            # Extract just the geographic lines from the DAS
+            geo_lines = [
+                l.strip() for l in resp.text.splitlines()
+                if any(k in l.lower() for k in ("lat", "lon", "title", "project"))
+            ]
+            das_info = {"url": url, "geo_lines": geo_lines}
+        except Exception as e:
+            das_info = {"url": url, "error": str(e)}
+
+    return {
+        "stored": {"name": rows[0]["name"], "lat": rows[0]["lat"], "lon": rows[0]["lon"],
+                   "country": rows[0]["country"], "networks": rows[0]["networks"]},
+        "catalog_file": fi.name if fi else None,
+        "das": das_info,
+    }
+
+
 @app.get("/api/check-new-year")
 async def check_new_year():
     years_by_var: dict[str, set[int]] = {}
