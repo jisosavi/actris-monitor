@@ -185,7 +185,9 @@ body {
   background: transparent;
   font-family: 'Inter', system-ui, sans-serif;
   letter-spacing: 0;
+  display: inline-block;
 }
+.cov-pip::after { content: attr(data-var); }
 .cov-pip--on {
   background: #303193;
   border-color: #303193;

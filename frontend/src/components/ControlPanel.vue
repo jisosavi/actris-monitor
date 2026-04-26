@@ -58,8 +58,9 @@ function onYearChange(val: any) {
                   v-for="v in varKeys"
                   :key="v"
                   :class="['cov-pip', coverageSet.has(`${y}:${v}`) && 'cov-pip--on']"
+                  :data-var="v === 'N' ? 'N' : v === 'scattering' ? 'S' : 'A'"
                   :title="VARIABLES[v].label"
-                >{{ v === 'N' ? 'N' : v === 'scattering' ? 'S' : 'A' }}</span>
+                />
               </div>
             </div>
           </SelectItem>
