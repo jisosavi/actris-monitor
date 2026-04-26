@@ -149,7 +149,7 @@ async def backfill_networks():
     if fetch_jobs.is_job_running():
         raise HTTPException(409, "Cannot backfill while a fetch job is running")
 
-    station_ids = await database.get_stations_with_empty_networks()
+    station_ids = await database.get_all_station_ids()
     if not station_ids:
         return {"updated": 0, "skipped": 0}
 

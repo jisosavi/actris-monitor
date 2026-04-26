@@ -260,11 +260,8 @@ async function doReset() {
           Run this if network filter shows stations as unknown after a data fetch.
         </div>
         <div v-if="backfillResult" class="action-result">
-          <template v-if="backfillResult.updated > 0">
-            Updated {{ backfillResult.updated }} station{{ backfillResult.updated !== 1 ? 's' : '' }}
-            <span v-if="backfillResult.skipped > 0"> · {{ backfillResult.skipped }} not found in catalog</span>
-          </template>
-          <span v-else class="result-muted">All stations already have network data</span>
+          Updated {{ backfillResult.updated }} / {{ backfillResult.updated + backfillResult.skipped }} stations
+          <span v-if="backfillResult.skipped > 0"> · {{ backfillResult.skipped }} not found in catalog</span>
         </div>
 
         <div class="modal-divider" />

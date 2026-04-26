@@ -272,11 +272,11 @@ async def clear_db() -> None:
     logger.info("Database cleared")
 
 
-async def get_stations_with_empty_networks() -> list[str]:
-    """Return distinct station_ids whose networks field is empty."""
+async def get_all_station_ids() -> list[str]:
+    """Return all distinct station_ids in the database."""
     assert _db
     async with _db.execute(
-        "SELECT DISTINCT station_id FROM station_records WHERE networks = ''"
+        "SELECT DISTINCT station_id FROM station_records"
     ) as cur:
         rows = await cur.fetchall()
     return [r["station_id"] for r in rows]
