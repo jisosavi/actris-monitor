@@ -21,7 +21,7 @@ const filteredStats = computed(() => {
   const pct = (p: number) => {
     const idx = (p / 100) * (values.length - 1)
     const lo = Math.floor(idx); const hi = Math.ceil(idx)
-    return values[lo] + (values[hi] - values[lo]) * (idx - lo)
+    return values[lo]! + (values[hi]! - values[lo]!) * (idx - lo)
   }
   return {
     median: pct(50),
