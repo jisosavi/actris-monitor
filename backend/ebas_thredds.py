@@ -19,6 +19,7 @@ Data access strategy:
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -28,6 +29,8 @@ from typing import Any
 
 import httpx
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 CATALOG_URL = "https://thredds.nilu.no/thredds/catalog/ebas/catalog.xml"
 OPENDAP_BASE = "https://thredds.nilu.no/thredds/dodsC/ebas"
@@ -76,12 +79,16 @@ class _FileInfo:
     end: date
 
 
+ACTRIS_DC_URL = "https://dc.actris.nilu.no/data"
+
+
 class EbasThreddsClient:
     def __init__(self) -> None:
         self._http: httpx.AsyncClient | None = None
         self._catalog: tuple[list[_FileInfo], datetime] | None = None
         self._station_meta: dict[str, dict] = {}
         self._data_cache: dict[str, tuple[Any, datetime]] = {}
+        self._actris_dc_names: set[str] | None = None
 
     async def start(self) -> None:
         self._http = httpx.AsyncClient(timeout=60.0)
@@ -156,6 +163,31 @@ class EbasThreddsClient:
         self._set_cached(key, records)
         return records
 
+    async def _get_actris_dc_names(self) -> set[str]:
+        """Return lowercase ACTRIS National Facility names from the ACTRIS Data Centre."""
+        if self._actris_dc_names is not None:
+            return self._actris_dc_names
+        try:
+            assert self._http
+            resp = await self._http.get(
+                ACTRIS_DC_URL,
+                params={"page": "1", "per_page": "1000"},
+                headers={"Accept": "application/json"},
+                timeout=30.0,
+            )
+            data = resp.json()
+            # facilities: [id, name, lat, lon, altitude, is_actris_nf]
+            self._actris_dc_names = {
+                f[1].strip().lower()
+                for f in data.get("facilities", [])
+                if f[5] is True
+            }
+            logger.info("Fetched %d ACTRIS NF station names from DC", len(self._actris_dc_names))
+        except Exception as exc:
+            logger.warning("Could not fetch ACTRIS DC station list: %s", exc)
+            self._actris_dc_names = set()
+        return self._actris_dc_names
+
     async def backfill_networks(self, station_ids: list[str]) -> dict[str, dict]:
         """
         Re-fetch .das metadata for all given station_ids.
@@ -163,6 +195,7 @@ class EbasThreddsClient:
         Fetches one .das file per station — no measurement data downloaded.
         """
         catalog = await self._get_catalog()
+        actris_dc_names = await self._get_actris_dc_names()
 
         rep_files: dict[str, _FileInfo] = {}
         for fi in catalog:
@@ -178,7 +211,7 @@ class EbasThreddsClient:
 
         async def _fetch_one(station_id: str) -> tuple[str, dict | None]:
             async with sem:
-                meta = await _fetch_station_meta_from_das(client, rep_files[station_id])
+                meta = await _fetch_station_meta_from_das(client, rep_files[station_id], actris_dc_names)
             return station_id, meta
 
         results = await asyncio.gather(*[_fetch_one(sid) for sid in rep_files])
@@ -207,7 +240,7 @@ class EbasThreddsClient:
             return self._station_meta[fi.station]
         async with sem:
             assert self._http
-            return await _fetch_station_meta_from_das(self._http, fi)
+            return await _fetch_station_meta_from_das(self._http, fi, self._actris_dc_names or set())
 
     def _get_cached(self, key: str) -> Any | None:
         if key in self._data_cache:
@@ -367,7 +400,11 @@ def _parse_das_coordinates(das_text: str) -> tuple[float | None, float | None]:
     return lat, lon
 
 
-async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo) -> dict | None:
+async def _fetch_station_meta_from_das(
+    client: httpx.AsyncClient,
+    fi: _FileInfo,
+    actris_dc_names: set[str] | None = None,
+) -> dict | None:
     try:
         url = f"{OPENDAP_BASE}/{fi.name}.das"
         resp = await client.get(url, timeout=30.0)
@@ -379,7 +416,12 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
 
         networks = ""
         name = None
+        ebas_station_name = None
         for line in text.split("\n"):
+            if ebas_station_name is None:
+                m = re.search(r'String ebas_station_name "(.*?)"', line, re.IGNORECASE)
+                if m:
+                    ebas_station_name = m.group(1).strip()
             if name is None and "title" in line.lower():
                 title_m = re.search(r'String title "(.*?)"', line, re.IGNORECASE)
                 if title_m:
@@ -400,8 +442,15 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
                     if found:
                         networks = ','.join(found)
 
+        # Augment with ACTRIS DC lookup: if station is an ACTRIS National Facility,
+        # ensure ACTRIS appears in networks even if the EBAS project field omits it.
+        if actris_dc_names:
+            check = (ebas_station_name or name or "").lower()
+            if check and check in actris_dc_names and "ACTRIS" not in networks:
+                networks = ("ACTRIS," + networks).rstrip(",") if networks else "ACTRIS"
+
         return {
-            "name":     name or fi.station,
+            "name":     ebas_station_name or name or fi.station,
             "lat":      lat,
             "lon":      lon,
             "country":  fi.station[:2].upper(),
