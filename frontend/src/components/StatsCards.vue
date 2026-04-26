@@ -12,35 +12,62 @@ const filteredStations = useFilteredStations()
 
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
 
-const filteredStats = computed(() => {
-  const values = filteredStations.value
-    .filter(s => s.mean !== null)
-    .map(s => s.mean as number)
-    .sort((a, b) => a - b)
-  if (values.length === 0) return null
+function computeStats(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b)
+  if (sorted.length === 0) return null
   const pct = (p: number) => {
-    const idx = (p / 100) * (values.length - 1)
+    const idx = (p / 100) * (sorted.length - 1)
     const lo = Math.floor(idx); const hi = Math.ceil(idx)
-    return values[lo]! + (values[hi]! - values[lo]!) * (idx - lo)
+    return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (idx - lo)
   }
-  return {
-    median: pct(50),
-    q1: pct(25),
-    q3: pct(75),
-    min: values[0],
-    max: values[values.length - 1],
-    n_stations: values.length,
-  }
+  return { median: pct(50), q1: pct(25), q3: pct(75), min: sorted[0]!, max: sorted[sorted.length - 1]! }
+}
+
+const filteredStats = computed(() => {
+  const values = filteredStations.value.filter(s => s.mean !== null).map(s => s.mean as number)
+  const s = computeStats(values)
+  return s ? { ...s, n_stations: values.length } : null
 })
+
+// Previous year values derived from delta_pct: prev = current / (1 + delta_pct/100)
+const prevStats = computed(() => {
+  const values = filteredStations.value
+    .filter(s => s.mean !== null && s.delta_pct !== null)
+    .map(s => s.mean! / (1 + s.delta_pct! / 100))
+    .filter(v => v > 0 && isFinite(v))
+  return computeStats(values)
+})
+
+interface Delta { pct: number; abs: number }
+
+function diff(curr: number | null | undefined, prev: number | null | undefined): Delta | null {
+  if (curr == null || prev == null || prev === 0) return null
+  return { abs: curr - prev, pct: ((curr - prev) / prev) * 100 }
+}
+
+function fmt(v: number | null | undefined, decimals = 1): string {
+  if (v == null) return '—'
+  return Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(decimals)
+}
+
+function fmtDelta(d: Delta | null): { pctStr: string; absStr: string; up: boolean } | null {
+  if (!d) return null
+  const sign = d.abs >= 0 ? '+' : ''
+  return {
+    pctStr: `${sign}${d.pct.toFixed(1)}%`,
+    absStr: `${sign}${fmt(d.abs)}`,
+    up: d.abs >= 0,
+  }
+}
+
+const iqrCurr = computed(() =>
+  filteredStats.value ? filteredStats.value.q3 - filteredStats.value.q1 : null)
+const iqrPrev = computed(() =>
+  prevStats.value ? prevStats.value.q3 - prevStats.value.q1 : null)
 
 const totalStations = computed(() => filteredStations.value.length)
 const withData = computed(() => filteredStations.value.filter(s => s.mean !== null).length)
 const withoutData = computed(() => totalStations.value - withData.value)
-
-function fmt(v: number | null | undefined, decimals = 1): string {
-  if (v == null) return '—'
-  return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v.toFixed(decimals)
-}
 </script>
 
 <template>
@@ -48,35 +75,43 @@ function fmt(v: number | null | undefined, decimals = 1): string {
     <div class="section-label">Network statistics</div>
 
     <div class="cards-grid">
+      <!-- Median -->
       <Card class="stat-card stat-card--median">
         <CardContent class="stat-content">
           <div class="stat-label">Median</div>
           <div class="stat-value">{{ fmt(filteredStats?.median) }}</div>
           <div class="stat-unit">{{ unit }}</div>
+          <StatDelta :d="fmtDelta(diff(filteredStats?.median, prevStats?.median))" />
         </CardContent>
       </Card>
 
+      <!-- IQR -->
       <Card class="stat-card stat-card--iqr">
         <CardContent class="stat-content">
           <div class="stat-label">IQR</div>
           <div class="stat-value stat-value--sm">{{ fmt(filteredStats?.q1) }}–{{ fmt(filteredStats?.q3) }}</div>
           <div class="stat-unit">{{ unit }}</div>
+          <StatDelta :d="fmtDelta(diff(iqrCurr, iqrPrev))" label="spread" />
         </CardContent>
       </Card>
 
+      <!-- Max -->
       <Card class="stat-card stat-card--max">
         <CardContent class="stat-content">
           <div class="stat-label">Max</div>
           <div class="stat-value">{{ fmt(filteredStats?.max) }}</div>
           <div class="stat-unit">{{ unit }}</div>
+          <StatDelta :d="fmtDelta(diff(filteredStats?.max, prevStats?.max))" />
         </CardContent>
       </Card>
 
+      <!-- Min -->
       <Card class="stat-card stat-card--min">
         <CardContent class="stat-content">
           <div class="stat-label">Min</div>
           <div class="stat-value">{{ fmt(filteredStats?.min) }}</div>
           <div class="stat-unit">{{ unit }}</div>
+          <StatDelta :d="fmtDelta(diff(filteredStats?.min, prevStats?.min))" />
         </CardContent>
       </Card>
     </div>
@@ -101,6 +136,34 @@ function fmt(v: number | null | undefined, decimals = 1): string {
   </div>
 </template>
 
+<!-- Inline sub-component for the delta row -->
+<script lang="ts">
+import { defineComponent, h } from 'vue'
+
+const StatDelta = defineComponent({
+  props: {
+    d: { type: Object as () => { pctStr: string; absStr: string; up: boolean } | null, default: null },
+    label: { type: String, default: '' },
+  },
+  setup(props) {
+    return () => {
+      if (!props.d) return null
+      const arrow = props.d.up ? '▲' : '▼'
+      const cls = props.d.up ? 'delta-up' : 'delta-dn'
+      const labelPart = props.label ? h('span', { class: 'delta-label' }, ` ${props.label}`) : null
+      return h('div', { class: ['stat-delta', cls] }, [
+        h('span', { class: 'delta-arrow' }, arrow + ' '),
+        h('span', { class: 'delta-pct' }, props.d.pctStr),
+        h('span', { class: 'delta-abs' }, `  ${props.d.absStr}`),
+        labelPart,
+      ])
+    }
+  },
+})
+
+export { StatDelta }
+</script>
+
 <style scoped>
 .stats-section { padding: 0 16px 16px; }
 
@@ -112,8 +175,6 @@ function fmt(v: number | null | undefined, decimals = 1): string {
   color: var(--text-muted);
   margin-bottom: 8px;
 }
-
-.loading-text { font-size: 12px; color: var(--text-muted); }
 
 .cards-grid {
   display: grid;
@@ -158,6 +219,23 @@ function fmt(v: number | null | undefined, decimals = 1): string {
 }
 .stat-value--sm { font-size: 13px; }
 .stat-unit { font-size: 9px; color: var(--text-muted); margin-top: 2px; font-family: monospace; }
+
+.stat-delta {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  margin-top: 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  flex-wrap: wrap;
+  column-gap: 3px;
+}
+.delta-up { color: var(--negative); }
+.delta-dn { color: var(--positive); }
+.delta-pct { font-weight: 600; }
+.delta-abs { color: inherit; opacity: 0.7; }
+.delta-label { font-size: 9px; opacity: 0.6; margin-left: 2px; }
 
 .stations-count {
   display: flex;
