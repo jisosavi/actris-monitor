@@ -392,19 +392,22 @@ def _parse_das_coordinates(das_text: str) -> tuple[float | None, float | None]:
       - Unsigned + hemi suffix:  String geospatial_lat_min "62.22S"
       - Separate hemi attribute: String station_lat_hemisphere "S"
       - DMS notation:            String station_latitude "62 13 12 S"
-    Also recognises station_latitude / station_longitude as attribute aliases.
+    Also recognises ebas_station_latitude/longitude (preferred — already signed)
+    and station_latitude / station_longitude as attribute aliases.
+    ebas_measurement_latitude is intentionally excluded; it can be unsigned/wrong
+    (e.g. King Sejong: measurement_lat=62.22 but station_lat=-62.22).
     """
     lat = lon = lat_hemi = lon_hemi = None
 
     for line in das_text.split("\n"):
         low = line.lower()
 
-        if lat is None and re.search(r'\b(geospatial_lat_min|station_latitude)\b', low):
+        if lat is None and re.search(r'\b(ebas_station_latitude|geospatial_lat_min|station_latitude)\b', low):
             val, hemi = _extract_coord_value(line, "NS")
             if val is not None:
                 lat, lat_hemi = val, hemi
 
-        if lon is None and re.search(r'\b(geospatial_lon_min|station_longitude)\b', low):
+        if lon is None and re.search(r'\b(ebas_station_longitude|geospatial_lon_min|station_longitude)\b', low):
             val, hemi = _extract_coord_value(line, "EW")
             if val is not None:
                 lon, lon_hemi = val, hemi
