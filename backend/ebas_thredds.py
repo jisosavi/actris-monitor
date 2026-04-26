@@ -55,6 +55,18 @@ _MAX_CONCURRENT = 20
 _EPOCH = date(1900, 1, 1)
 
 
+def _match_network(token: str) -> str | None:
+    """Map a raw project token to a canonical network name, tolerating variations."""
+    t = token.strip().upper()
+    if t.startswith("ACTRIS"):
+        return "ACTRIS"
+    if t.startswith("EMEP"):
+        return "EMEP"
+    if "GAW" in t or "WDCA" in t:
+        return "GAW-WDCA"
+    return None
+
+
 @dataclass
 class _FileInfo:
     station: str
@@ -285,7 +297,6 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
         resp = await client.get(url, timeout=30.0)
         text = resp.text
 
-        KNOWN_NETWORKS = {"ACTRIS", "EMEP", "GAW-WDCA"}
         networks = ""
 
         lat = lon = name = None
@@ -312,7 +323,9 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
             if not networks:
                 m = re.search(r'String project "(.*?)"', line, re.IGNORECASE)
                 if m:
-                    found = [p.strip() for p in m.group(1).split(',') if p.strip() in KNOWN_NETWORKS]
+                    found = list(dict.fromkeys(filter(None, (
+                        _match_network(p) for p in m.group(1).split(',')
+                    ))))
                     if found:
                         networks = ','.join(found)
 
