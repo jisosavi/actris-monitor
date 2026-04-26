@@ -135,7 +135,7 @@ onMounted(() => {
     style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
     center: [15, 54],
     zoom: 3.5,
-    minZoom: 2,
+    minZoom: 0.5,
     maxZoom: 14,
     attributionControl: false,
   })
