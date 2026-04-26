@@ -156,7 +156,7 @@ async def backfill_networks():
     _backfill_running = True
     try:
         updates = await client.backfill_networks(station_ids)
-        count = await database.update_station_networks_bulk(updates)
+        count = await database.update_station_meta_bulk(updates)
         return {"updated": count, "skipped": len(station_ids) - count}
     finally:
         _backfill_running = False

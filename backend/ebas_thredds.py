@@ -156,15 +156,14 @@ class EbasThreddsClient:
         self._set_cached(key, records)
         return records
 
-    async def backfill_networks(self, station_ids: list[str]) -> dict[str, str]:
+    async def backfill_networks(self, station_ids: list[str]) -> dict[str, dict]:
         """
-        Fetch only .das metadata for stations with empty networks field.
-        Returns {station_id: networks_string} for every station where a value was found.
+        Re-fetch .das metadata for all given station_ids.
+        Returns {station_id: {lat, lon, networks}} for every station found in catalog.
         Fetches one .das file per station — no measurement data downloaded.
         """
         catalog = await self._get_catalog()
 
-        # Pick one representative file per requested station
         rep_files: dict[str, _FileInfo] = {}
         for fi in catalog:
             if fi.station in station_ids and fi.station not in rep_files:
@@ -177,13 +176,13 @@ class EbasThreddsClient:
         assert self._http
         client = self._http
 
-        async def _fetch_one(station_id: str) -> tuple[str, str]:
+        async def _fetch_one(station_id: str) -> tuple[str, dict | None]:
             async with sem:
                 meta = await _fetch_station_meta_from_das(client, rep_files[station_id])
-            return station_id, (meta.get("networks", "") if meta else "")
+            return station_id, meta
 
         results = await asyncio.gather(*[_fetch_one(sid) for sid in rep_files])
-        return {sid: nets for sid, nets in results if nets}
+        return {sid: meta for sid, meta in results if meta}
 
     async def get_catalog_years(self, variable: str) -> set[int]:
         """Return all years that have data for a given variable in the catalog."""
@@ -291,24 +290,96 @@ def _parse_first_section_floats(text: str) -> np.ndarray:
     return np.array(vals, dtype=float)
 
 
+def _extract_coord_value(line: str, hemi_chars: str) -> tuple[float | None, str | None]:
+    """
+    Extract a coordinate value and optional hemisphere letter from one DAS line.
+
+    Handles:
+      - DMS:               62 13 12.0 S  /  62:13:12S  /  62°13'12"S
+      - Decimal + suffix:  62.22S  /  62.22 S  /  "62.22S"
+      - Signed float:      -62.22
+    Returns (decimal_value, hemisphere_char_or_None).
+    """
+    # DMS: D[sep]M[sep]S [hemi]
+    dms = re.search(
+        r'(\d{1,3})[°\s:](\d{1,2})[\'°\s:]+(\d+\.?\d*)["\s]*([' + hemi_chars + r'])',
+        line, re.IGNORECASE,
+    )
+    if dms:
+        val = int(dms.group(1)) + int(dms.group(2)) / 60.0 + float(dms.group(3)) / 3600.0
+        return val, dms.group(4).upper()
+
+    # Decimal with optional direction suffix.
+    # Lookbehind (?<![a-zA-Z\d]) prevents matching digits embedded in type names like "Float64".
+    # Lookahead (?=\s*[;",]|\s*$) requires a clean terminator (semicolon, quote, end of line).
+    dec = re.search(
+        r'(?<![a-zA-Z\d])(-?\d+\.?\d*)\s*([' + hemi_chars + r'])?(?=\s*[;",]|\s*$)',
+        line, re.IGNORECASE,
+    )
+    if dec:
+        try:
+            return float(dec.group(1)), (dec.group(2).upper() if dec.group(2) else None)
+        except ValueError:
+            pass
+    return None, None
+
+
+def _parse_das_coordinates(das_text: str) -> tuple[float | None, float | None]:
+    """
+    Parse lat/lon from a .das file, handling multiple coordinate styles:
+      - Signed decimal:          Float64 geospatial_lat_min -62.22
+      - Unsigned + hemi suffix:  String geospatial_lat_min "62.22S"
+      - Separate hemi attribute: String station_lat_hemisphere "S"
+      - DMS notation:            String station_latitude "62 13 12 S"
+    Also recognises station_latitude / station_longitude as attribute aliases.
+    """
+    lat = lon = lat_hemi = lon_hemi = None
+
+    for line in das_text.split("\n"):
+        low = line.lower()
+
+        if lat is None and re.search(r'\b(geospatial_lat_min|station_latitude)\b', low):
+            val, hemi = _extract_coord_value(line, "NS")
+            if val is not None:
+                lat, lat_hemi = val, hemi
+
+        if lon is None and re.search(r'\b(geospatial_lon_min|station_longitude)\b', low):
+            val, hemi = _extract_coord_value(line, "EW")
+            if val is not None:
+                lon, lon_hemi = val, hemi
+
+        if lat_hemi is None and re.search(r'\b\w*lat\w*hemisphere\b', low):
+            m = re.search(r'"([NS])"', line, re.IGNORECASE)
+            if m:
+                lat_hemi = m.group(1).upper()
+
+        if lon_hemi is None and re.search(r'\b\w*lon\w*hemisphere\b', low):
+            m = re.search(r'"([EW])"', line, re.IGNORECASE)
+            if m:
+                lon_hemi = m.group(1).upper()
+
+    # Apply hemisphere signs to unsigned values
+    if lat is not None and lat_hemi == "S" and lat > 0:
+        lat = -lat
+    if lon is not None and lon_hemi == "W" and lon > 0:
+        lon = -lon
+
+    return lat, lon
+
+
 async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo) -> dict | None:
     try:
         url = f"{OPENDAP_BASE}/{fi.name}.das"
         resp = await client.get(url, timeout=30.0)
         text = resp.text
 
-        networks = ""
+        lat, lon = _parse_das_coordinates(text)
+        if lat is None or lon is None:
+            return None
 
-        lat = lon = name = None
+        networks = ""
+        name = None
         for line in text.split("\n"):
-            if lat is None:
-                m = re.search(r"geospatial_lat_min\s+([-\d.]+)", line)
-                if m:
-                    lat = float(m.group(1))
-            if lon is None:
-                m = re.search(r"geospatial_lon_min\s+([-\d.]+)", line)
-                if m:
-                    lon = float(m.group(1))
             if name is None and "title" in line.lower():
                 title_m = re.search(r'String title "(.*?)"', line, re.IGNORECASE)
                 if title_m:
@@ -328,9 +399,6 @@ async def _fetch_station_meta_from_das(client: httpx.AsyncClient, fi: _FileInfo)
                     ))))
                     if found:
                         networks = ','.join(found)
-
-        if lat is None or lon is None:
-            return None
 
         return {
             "name":     name or fi.station,

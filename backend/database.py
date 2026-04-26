@@ -295,16 +295,17 @@ async def get_all_station_ids() -> list[str]:
     return [r["station_id"] for r in rows]
 
 
-async def update_station_networks_bulk(updates: dict[str, str]) -> int:
-    """Set networks for multiple station_ids. Returns number of station_ids updated."""
+async def update_station_meta_bulk(updates: dict[str, dict]) -> int:
+    """Update lat, lon and networks for multiple station_ids from .das metadata.
+    Returns number of station_ids updated."""
     if not updates:
         return 0
     assert _db
     async with _write_lock:
-        for station_id, networks in updates.items():
+        for station_id, meta in updates.items():
             await _db.execute(
-                "UPDATE station_records SET networks=? WHERE station_id=?",
-                (networks, station_id),
+                "UPDATE station_records SET lat=?, lon=?, networks=? WHERE station_id=?",
+                (meta["lat"], meta["lon"], meta.get("networks", ""), station_id),
             )
         await _db.commit()
     return len(updates)
