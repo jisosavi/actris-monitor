@@ -254,6 +254,11 @@ async function doReset() {
         >
           {{ backfilling ? 'Fetching metadata…' : 'Backfill network metadata' }}
         </Button>
+        <div class="section-note">
+          Fetches one small metadata file per station to populate missing network
+          affiliation (ACTRIS / EMEP / GAW-WDCA). No measurement data is downloaded.
+          Run this if network filter shows stations as unknown after a data fetch.
+        </div>
         <div v-if="backfillResult" class="action-result">
           <template v-if="backfillResult.updated > 0">
             Updated {{ backfillResult.updated }} station{{ backfillResult.updated !== 1 ? 's' : '' }}
@@ -421,6 +426,11 @@ async function doReset() {
 .new-year-found { font-size: 11px; color: var(--accent); font-weight: 500; }
 .new-year-none { font-size: 11px; color: var(--text-muted); }
 
+.section-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
 .action-result { font-size: 11px; color: var(--accent); }
 .result-muted { color: var(--text-muted); }
 
