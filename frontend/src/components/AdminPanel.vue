@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useQueryClient } from '@tanstack/vue-query'
 import { storeToRefs } from 'pinia'
 import { Button } from '@/components/ui/button'
-import { api, useFetchProgress, useStartFetch, useDbStatus, useCheckNewYear, useResetDb } from '@/composables/useStationData'
+import { api, useFetchProgress, useStartFetch, useDbStatus, useCheckNewYear, useResetDb, useBackfillNetworks } from '@/composables/useStationData'
 import { useStationsStore } from '@/stores/stations'
 import { VARIABLES, YEAR_MIN, YEAR_MAX } from '@/types'
 import type { Variable } from '@/types'
@@ -15,12 +15,15 @@ const { showDataSetup } = storeToRefs(store)
 const queryClient = useQueryClient()
 const startFetch = useStartFetch()
 const resetDb = useResetDb()
+const backfillNetworks = useBackfillNetworks()
 const { data: job } = useFetchProgress()
 const { data: dbStatus } = useDbStatus()
 const newYearQuery = useCheckNewYear()
 
 const confirmReset = ref(false)
 const resetting = ref(false)
+const backfilling = ref(false)
+const backfillResult = ref<{ updated: number; skipped: number } | null>(null)
 
 async function doReset() {
   resetting.value = true
@@ -29,6 +32,16 @@ async function doReset() {
     confirmReset.value = false
   } finally {
     resetting.value = false
+  }
+}
+
+async function doBackfill() {
+  backfilling.value = true
+  backfillResult.value = null
+  try {
+    backfillResult.value = await backfillNetworks()
+  } finally {
+    backfilling.value = false
   }
 }
 
@@ -145,6 +158,26 @@ const coverageByVar = computed(() => {
         <span v-else class="new-year-none">Up to date (max {{ newYearResult.current_max }})</span>
       </div>
 
+      <!-- Backfill network metadata -->
+      <div class="action-row">
+        <Button
+          size="sm"
+          variant="outline"
+          class="setup-btn"
+          :disabled="backfilling || isRunning"
+          @click="doBackfill"
+        >
+          {{ backfilling ? 'Fetching metadata…' : 'Backfill network metadata' }}
+        </Button>
+      </div>
+      <div v-if="backfillResult" class="backfill-result">
+        <template v-if="backfillResult.updated > 0">
+          Updated {{ backfillResult.updated }} station{{ backfillResult.updated !== 1 ? 's' : '' }}
+          <span v-if="backfillResult.skipped > 0"> ({{ backfillResult.skipped }} not found in catalog)</span>
+        </template>
+        <span v-else class="backfill-done">All stations already have network data</span>
+      </div>
+
       <!-- Data setup / reset -->
       <div class="action-row">
         <Button size="sm" variant="outline" class="setup-btn" @click="showDataSetup = true">
@@ -236,4 +269,6 @@ const coverageByVar = computed(() => {
   text-underline-offset: 2px;
 }
 .cancel-link:hover { color: var(--text); }
+.backfill-result { font-size: 10px; color: var(--accent); margin-top: -4px; }
+.backfill-done { color: var(--text-muted); }
 </style>

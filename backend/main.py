@@ -138,6 +138,30 @@ async def reset_db():
     return {"ok": True}
 
 
+_backfill_running = False
+
+
+@app.post("/api/backfill-networks")
+async def backfill_networks():
+    global _backfill_running
+    if _backfill_running:
+        raise HTTPException(409, "Backfill already running")
+    if fetch_jobs.is_job_running():
+        raise HTTPException(409, "Cannot backfill while a fetch job is running")
+
+    station_ids = await database.get_stations_with_empty_networks()
+    if not station_ids:
+        return {"updated": 0, "skipped": 0}
+
+    _backfill_running = True
+    try:
+        updates = await client.backfill_networks(station_ids)
+        count = await database.update_station_networks_bulk(updates)
+        return {"updated": count, "skipped": len(station_ids) - count}
+    finally:
+        _backfill_running = False
+
+
 @app.get("/api/check-new-year")
 async def check_new_year():
     years_by_var: dict[str, set[int]] = {}

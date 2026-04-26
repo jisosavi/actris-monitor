@@ -121,6 +121,15 @@ export function useResetDb() {
   }
 }
 
+export function useBackfillNetworks() {
+  const queryClient = useQueryClient()
+  return async (): Promise<{ updated: number; skipped: number }> => {
+    const res = await api.post<{ updated: number; skipped: number }>('/backfill-networks')
+    await queryClient.invalidateQueries({ queryKey: ['stations'] })
+    return res.data
+  }
+}
+
 export function useCheckNewYear() {
   return useQuery<NewYearStatus>({
     queryKey: ['check-new-year'],

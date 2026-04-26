@@ -270,3 +270,28 @@ async def clear_db() -> None:
             await _db.execute(f"DELETE FROM {table}")
         await _db.commit()
     logger.info("Database cleared")
+
+
+async def get_stations_with_empty_networks() -> list[str]:
+    """Return distinct station_ids whose networks field is empty."""
+    assert _db
+    async with _db.execute(
+        "SELECT DISTINCT station_id FROM station_records WHERE networks = ''"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [r["station_id"] for r in rows]
+
+
+async def update_station_networks_bulk(updates: dict[str, str]) -> int:
+    """Set networks for multiple station_ids. Returns number of station_ids updated."""
+    if not updates:
+        return 0
+    assert _db
+    async with _write_lock:
+        for station_id, networks in updates.items():
+            await _db.execute(
+                "UPDATE station_records SET networks=? WHERE station_id=?",
+                (networks, station_id),
+            )
+        await _db.commit()
+    return len(updates)

@@ -144,6 +144,35 @@ class EbasThreddsClient:
         self._set_cached(key, records)
         return records
 
+    async def backfill_networks(self, station_ids: list[str]) -> dict[str, str]:
+        """
+        Fetch only .das metadata for stations with empty networks field.
+        Returns {station_id: networks_string} for every station where a value was found.
+        Fetches one .das file per station — no measurement data downloaded.
+        """
+        catalog = await self._get_catalog()
+
+        # Pick one representative file per requested station
+        rep_files: dict[str, _FileInfo] = {}
+        for fi in catalog:
+            if fi.station in station_ids and fi.station not in rep_files:
+                rep_files[fi.station] = fi
+
+        if not rep_files:
+            return {}
+
+        sem = asyncio.Semaphore(_MAX_CONCURRENT)
+        assert self._http
+        client = self._http
+
+        async def _fetch_one(station_id: str) -> tuple[str, str]:
+            async with sem:
+                meta = await _fetch_station_meta_from_das(client, rep_files[station_id])
+            return station_id, (meta.get("networks", "") if meta else "")
+
+        results = await asyncio.gather(*[_fetch_one(sid) for sid in rep_files])
+        return {sid: nets for sid, nets in results if nets}
+
     async def get_catalog_years(self, variable: str) -> set[int]:
         """Return all years that have data for a given variable in the catalog."""
         catalog = await self._get_catalog()
