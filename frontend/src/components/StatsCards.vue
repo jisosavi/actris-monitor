@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useFilteredStations } from '@/composables/useStationData'
+import { useStationData, useFilteredStations } from '@/composables/useStationData'
 import { useStationsStore } from '@/stores/stations'
 import { storeToRefs } from 'pinia'
 import { VARIABLES } from '@/types'
@@ -9,6 +9,14 @@ import { Card, CardContent } from '@/components/ui/card'
 const store = useStationsStore()
 const { selectedVariable, networkFilter } = storeToRefs(store)
 const filteredStations = useFilteredStations()
+const { stationsQuery } = useStationData()
+
+const isNoData = computed(() => {
+  if (stationsQuery.isFetching.value) return false
+  if (stationsQuery.isError.value) return true
+  const data = stationsQuery.data.value
+  return data !== undefined && data.length === 0
+})
 
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
 
@@ -74,7 +82,8 @@ const withoutData = computed(() => totalStations.value - withData.value)
   <div class="stats-section">
     <div class="section-label">Network statistics</div>
 
-    <div class="cards-grid">
+    <div v-if="isNoData" class="nodata-banner">No data available for this year</div>
+    <div v-else class="cards-grid">
       <!-- Median -->
       <Card class="stat-card stat-card--median">
         <CardContent class="stat-content">
@@ -260,4 +269,16 @@ export { StatDelta }
 .count-dot--nodata { background: var(--text-muted); opacity: 0.5; }
 
 .filter-note { font-size: 10px; color: var(--accent); margin-top: 6px; }
+
+.nodata-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
 </style>

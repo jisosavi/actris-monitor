@@ -38,10 +38,6 @@ const coverageSet = computed(() => {
   return s
 })
 
-function hasAnyData(year: number) {
-  return varKeys.some(v => coverageSet.value.has(`${year}:${v}`))
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function onYearChange(val: any) {
   if (val != null) selectedYear.value = Number(val)
@@ -64,18 +60,15 @@ function onYearChange(val: any) {
             :text-value="String(y)"
           >
             <div class="year-option">
-              <span :class="!hasAnyData(y) && 'year-no-data'">{{ y }}</span>
+              <span :class="!varKeys.some(v => coverageSet.has(`${y}:${v}`)) && 'year-no-data'">{{ y }}</span>
               <div class="year-cov">
-                <span v-if="!hasAnyData(y)" class="year-no-data-label">no data</span>
-                <template v-else>
-                  <span
-                    v-for="v in varKeys"
-                    :key="v"
-                    :class="['cov-pip', coverageSet.has(`${y}:${v}`) && 'cov-pip--on']"
-                    :data-var="v === 'N' ? 'N' : v === 'scattering' ? 'S' : 'A'"
-                    :title="VARIABLES[v].label"
-                  />
-                </template>
+                <span
+                  v-for="v in varKeys"
+                  :key="v"
+                  :class="['cov-pip', coverageSet.has(`${y}:${v}`) && 'cov-pip--on']"
+                  :data-var="v === 'N' ? 'N' : v === 'scattering' ? 'S' : 'A'"
+                  :title="VARIABLES[v].label"
+                />
               </div>
             </div>
           </SelectItem>
@@ -232,5 +225,4 @@ function onYearChange(val: any) {
 }
 
 .year-no-data { color: var(--text-muted); }
-.year-no-data-label { font-size: 10px; color: var(--text-muted); font-style: italic; }
 </style>

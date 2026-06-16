@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, shallowRef } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, shallowRef } from 'vue'
 import maplibregl from 'maplibre-gl'
 import { MapboxOverlay } from '@deck.gl/mapbox'
 import { ScatterplotLayer } from '@deck.gl/layers'
@@ -40,6 +40,13 @@ watch(() => stationsQuery.data.value, (data) => {
   if (data?.length) {
     dataTimestamp.value = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   }
+})
+
+const isNoData = computed(() => {
+  if (stationsQuery.isFetching.value) return false
+  if (stationsQuery.isError.value) return true
+  const data = stationsQuery.data.value
+  return data !== undefined && data.length === 0
 })
 
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t }
@@ -156,12 +163,12 @@ onMounted(() => {
 
   watch(
     filteredStations,
-    (stations) => { if (stations?.length) refresh(stations) },
+    (stations) => { refresh(stations ?? []) },
     { immediate: true },
   )
 
   watch(rankingMode, () => {
-    if (filteredStations.value?.length) refresh(filteredStations.value)
+    refresh(filteredStations.value ?? [])
   })
 })
 
@@ -248,6 +255,17 @@ onUnmounted(() => {
           <div v-if="!stationsQuery.data.value" class="loading-sub">
             First load takes 30–90 s while data is fetched from remote servers. Results are cached for 24 h.
           </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- No data veil -->
+    <Transition name="veil">
+      <div v-if="isNoData" class="nodata-veil">
+        <div class="nodata-box">
+          <div class="nodata-icon">○</div>
+          <div class="nodata-msg">No data available for this year</div>
+          <div class="nodata-sub">Select a different year or use the Data panel to fetch it.</div>
         </div>
       </div>
     </Transition>
@@ -358,6 +376,45 @@ onUnmounted(() => {
   line-height: 1.5;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.nodata-veil {
+  position: absolute;
+  inset: 0;
+  background: rgba(238, 241, 247, 0.80);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.nodata-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 32px;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 300px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(48, 49, 147, 0.10);
+}
+.nodata-icon {
+  font-size: 32px;
+  color: var(--text-muted);
+  line-height: 1;
+  opacity: 0.5;
+}
+.nodata-msg {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.nodata-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
 
 .fade-enter-active, .fade-leave-active { transition: opacity 0.18s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
