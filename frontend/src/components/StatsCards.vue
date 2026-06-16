@@ -15,7 +15,8 @@ const isNoData = computed(() => {
   if (stationsQuery.isFetching.value) return false
   if (stationsQuery.isError.value) return true
   const data = stationsQuery.data.value
-  return data !== undefined && data.length === 0
+  if (data === undefined) return false
+  return data.length === 0 || data.every(s => s.mean === null)
 })
 
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
