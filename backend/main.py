@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import os as _os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -31,7 +32,7 @@ VARIABLES: dict[str, dict] = {
 VariableKey = Literal["N", "scattering", "absorption"]
 
 YEAR_MIN = 2000
-YEAR_MAX = 2024
+YEAR_MAX = datetime.now().year
 
 client = EbasThreddsClient()
 
