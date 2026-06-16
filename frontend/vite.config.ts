@@ -7,6 +7,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: process.env.VITE_BASE_PATH ?? '/',
   plugins: [vue(), vueDevTools(), tailwindcss()],
+  build: {
+    chunkSizeWarningLimit: 2600,
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
