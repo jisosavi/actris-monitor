@@ -191,16 +191,54 @@ and `503` with `Retry-After` and a message that tells an agent to batch rather t
 poll. Both counters are per-process: replicating the service multiplies the
 effective limit.
 
-Revisit if the endpoint is ever listed publicly as a connector, which needs OAuth
-2.1 regardless, or if per-user quota becomes necessary:
+### Authentication is a live roadmap item, not a closed question
 
-- **Bearer token header** — pragmatic for a handful of known users, roughly an
-  hour of work, and supported by Claude Desktop/Code custom connectors. Note the
-  SDK's `TokenVerifier` path requires `AuthSettings(issuer_url=...)` pointing at a
-  real authorization server, so a static-token verifier publishes a discovery
-  document that points nowhere; plain ASGI middleware is the honest shortcut.
-- **OAuth 2.1** — what the MCP spec points at, and what a publicly listed
-  connector needs. Meaningfully more work.
+Open was the right call for the v1 spike, and it is reversible. The endpoint URL is
+now published — `.mcp.json` at the repo root and a section in the README point at
+the Railway service — which raises the discoverability that makes the decision worth
+revisiting. **Expect to add authentication** if any of these show up:
+
+- **Abuse or cost.** The per-address limit handles one rude client and does nothing
+  against a distributed one. The tell is Railway CPU or request volume rising without
+  a matching rise in dashboard traffic.
+- **Per-user quota or attribution.** Today every caller is indistinguishable, so
+  there is no way to throttle one heavy user without throttling everyone, and no way
+  to know who is redistributing the data.
+- **Listing as a public connector.** Requires OAuth 2.1 with dynamic client
+  registration regardless of what we would otherwise prefer.
+- **A request from NILU/ACTRIS.** See the redistribution question below; if they want
+  the channel controlled, tokens are the mechanism.
+
+The options, in ascending cost:
+
+- **Shared bearer token, ASGI middleware** — roughly an hour. Compare
+  `Authorization: Bearer <secret>` against an env var in the same middleware chain as
+  `limits.py`, mirroring `require_admin`'s fail-closed pattern. Works with
+  `claude mcp add --header` and with `.mcp.json`.
+- **Bearer token via the SDK's `TokenVerifier`** — spec-correct `401` plus RFC 9728
+  discovery at `/.well-known/oauth-protected-resource/mcp`. But `token_verifier=` and
+  `auth=AuthSettings(issuer_url=...)` must travel together (the SDK raises otherwise),
+  and `issuer_url` has to name a real authorization server — so a static-token
+  verifier publishes a discovery document pointing nowhere. Plain middleware is the
+  honest shortcut until there is an actual issuer.
+- **OAuth 2.1** — what the MCP spec points at, and what a publicly listed connector
+  needs. Meaningfully more work, and mostly configuration outside this repo.
+
+Three things to get right when it happens:
+
+1. **It is a breaking change for every published client.** The committed `.mcp.json`
+   and the README URL are now the advertised entry point; adding auth silently turns
+   them into `401`s. Bump the README, and prefer a grace period where an
+   unauthenticated call returns a teaching error naming how to get a token rather
+   than a bare `401`.
+2. **Never commit the token.** `.mcp.json` supports environment expansion — use
+   `"headers": {"Authorization": "Bearer ${ACTRIS_MCP_TOKEN}"}` so the committed file
+   stays secret-free. A literal token in that file is the actual leak, and it is a
+   public repo.
+3. **Keep the rate limits.** Auth identifies callers; it does not stop one
+   authenticated caller from hammering the container. The two controls are
+   complementary, and per-token limits are the natural upgrade once callers have
+   identities.
 
 ## Forward-compatibility for monthly
 
@@ -281,13 +319,20 @@ send an identifying User-Agent.
 
 ## Open questions
 
-1. **Redistribution.** A hosted MCP endpoint is a redistribution channel for
-   EBAS/ACTRIS data, which carries citation and PI-acknowledgement expectations.
-   Worth asking NILU/ACTRIS directly rather than letting them discover it.
-2. **Public connector or private?** Decides bearer token vs OAuth 2.1, and it is
-   the largest single swing in v1 effort.
+1. **Redistribution — now the most pressing of the three.** A hosted MCP endpoint is
+   a redistribution channel for EBAS/ACTRIS data, which carries citation and
+   PI-acknowledgement expectations. The endpoint is live and its URL is published in
+   the README and `.mcp.json`, so this has moved from hypothetical to actual: worth
+   asking NILU/ACTRIS directly rather than letting them discover it. Their answer may
+   also settle the authentication question above.
+2. ~~**Public connector or private?**~~ Answered for now: **public and open**, with
+   rate limiting instead of tokens, because the data is public and read-only. Not
+   permanent — see "Authentication is a live roadmap item" above for the triggers
+   that would reopen it.
 3. **Attribution mechanics.** Injecting citation text into every tool response is
    the only reliable way to keep it attached once an LLM paraphrases the numbers.
+   **Implemented** for `get_coverage` via `formatting.Provenance`; the open part is
+   whether a model actually carries it into prose, which only real sessions reveal.
 
 ## Prior art checked
 
