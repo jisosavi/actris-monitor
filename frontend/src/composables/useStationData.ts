@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { storeToRefs } from 'pinia'
 import axios from 'axios'
@@ -43,6 +43,62 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL
     ?? (import.meta.env.DEV ? 'http://localhost:8000/api' : '/api'),
 })
+
+// ── Admin token ───────────────────────────────────────────────────────────────
+//
+// The mutating endpoints (start-fetch, db/reset, backfill-networks) require an
+// X-Admin-Token header. The token is deliberately NOT part of the build: it is
+// typed into the Data Setup panel by the operator and kept in their own browser.
+// Nothing secret ships to visitors.
+
+const ADMIN_TOKEN_KEY = 'actris.adminToken'
+
+function readStoredToken(): string {
+  try {
+    return localStorage.getItem(ADMIN_TOKEN_KEY) ?? ''
+  } catch {
+    return '' // private mode or storage disabled
+  }
+}
+
+export const adminToken = ref<string>(readStoredToken())
+export const hasAdminToken = computed(() => adminToken.value.length > 0)
+
+export function setAdminToken(token: string) {
+  adminToken.value = token
+  try {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token)
+    else localStorage.removeItem(ADMIN_TOKEN_KEY)
+  } catch {
+    // Non-persistent session: the in-memory ref still works for this tab.
+  }
+}
+
+export function clearAdminToken() {
+  setAdminToken('')
+}
+
+// Only the protected endpoints get the header. Attaching it to every request
+// would make ordinary GETs non-simple and cost a CORS preflight round trip each.
+const ADMIN_PATHS = ['/start-fetch', '/db/reset', '/backfill-networks', '/admin/check']
+
+api.interceptors.request.use((config) => {
+  const url = config.url ?? ''
+  if (adminToken.value && ADMIN_PATHS.some((path) => url.startsWith(path))) {
+    config.headers['X-Admin-Token'] = adminToken.value
+  }
+  return config
+})
+
+/** Validate a token against the backend without causing side effects. */
+export async function checkAdminToken(token: string): Promise<boolean> {
+  try {
+    await api.get('/admin/check', { headers: { 'X-Admin-Token': token } })
+    return true
+  } catch {
+    return false
+  }
+}
 
 export function useStationData() {
   const store = useStationsStore()

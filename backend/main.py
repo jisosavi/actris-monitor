@@ -1,11 +1,12 @@
 from __future__ import annotations
 import asyncio
 import os as _os
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -66,6 +67,35 @@ app.add_middleware(
 )
 
 
+# ── Admin authentication ──────────────────────────────────────────────────────
+
+ADMIN_TOKEN = _os.environ.get("ADMIN_TOKEN", "")
+
+
+def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Guard the mutating endpoints with a shared secret.
+
+    Fails closed: with no ADMIN_TOKEN configured the endpoints are unavailable
+    rather than open, so a missing environment variable cannot silently leave
+    the database writable from the public internet.
+
+    The token is never shipped in the frontend bundle — the Data Setup panel
+    prompts for it and keeps it in the operator's own browser storage.
+    """
+    if not ADMIN_TOKEN:
+        raise HTTPException(
+            503, "Admin endpoints are disabled: ADMIN_TOKEN is not configured."
+        )
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, ADMIN_TOKEN):
+        raise HTTPException(401, "Invalid or missing admin token.")
+
+
+@app.get("/api/admin/check")
+async def admin_check(_: None = Depends(require_admin)):
+    """Validate an admin token without side effects, so the UI can unlock itself."""
+    return {"ok": True}
+
+
 # ── Existing data endpoints (now DB-backed) ───────────────────────────────────
 
 @app.get("/api/stations/{year}/{variable}")
@@ -116,7 +146,7 @@ class FetchRequest(BaseModel):
     variables: list[str]
 
 
-@app.post("/api/start-fetch")
+@app.post("/api/start-fetch", dependencies=[Depends(require_admin)])
 async def start_fetch(body: FetchRequest):
     if fetch_jobs.is_job_running():
         raise HTTPException(409, "A fetch job is already running")
@@ -131,7 +161,7 @@ async def start_fetch(body: FetchRequest):
     return {"started": True, "total": len(combos)}
 
 
-@app.post("/api/db/reset")
+@app.post("/api/db/reset", dependencies=[Depends(require_admin)])
 async def reset_db():
     if fetch_jobs.is_job_running():
         raise HTTPException(409, "Cannot reset while a fetch job is running")
@@ -142,7 +172,7 @@ async def reset_db():
 _backfill_running = False
 
 
-@app.post("/api/backfill-networks")
+@app.post("/api/backfill-networks", dependencies=[Depends(require_admin)])
 async def backfill_networks():
     global _backfill_running
     if _backfill_running:

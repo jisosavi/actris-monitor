@@ -55,9 +55,24 @@ it is the reason the app is usable.
 - `TARGET_WAVELENGTH` is 525 nm (scattering) and 520 nm (absorption) while the
   labels in `main.py` and the README say 550 nm. Unresolved.
 
-**The mutating endpoints are unauthenticated.** `POST /api/db/reset`,
-`/api/start-fetch` and `/api/backfill-networks` have no auth, and CORS defaults to
-`*`. This is a known issue to fix, not a pattern to copy.
+**The mutating endpoints require an admin token.** `POST /api/db/reset`,
+`/api/start-fetch` and `/api/backfill-networks` are guarded by `require_admin`,
+which checks an `X-Admin-Token` header against the `ADMIN_TOKEN` environment
+variable. It **fails closed**: with `ADMIN_TOKEN` unset the endpoints return 503
+rather than being open, so a missing variable cannot silently reopen the hole.
+
+The token is never part of the frontend build. The Data Setup panel prompts for
+it, validates it against `GET /api/admin/check`, and keeps it in the operator's
+own `localStorage`. Visitors read the dashboard with no token; the management
+controls stay disabled for them.
+
+The axios interceptor in `useStationData.ts` attaches the header **only** to the
+admin paths. Don't widen that — sending a custom header on ordinary GETs makes
+them non-simple and costs a CORS preflight round trip on every read.
+
+`ALLOWED_ORIGIN` should be set to the real frontend origin in production. Note
+CORS only constrains browsers; it does nothing against `curl`, which is why the
+token is the actual protection.
 
 **Be polite to NILU.** Their THREDDS server is a shared research resource. Results
 are cached 24 h and concurrency is capped at `_MAX_CONCURRENT = 20`. Don't raise

@@ -9,6 +9,10 @@ import {
   useDbStatus,
   useResetDb,
   useBackfillNetworks,
+  hasAdminToken,
+  setAdminToken,
+  clearAdminToken,
+  checkAdminToken,
 } from '@/composables/useStationData'
 import { useStationsStore } from '@/stores/stations'
 import { VARIABLES, YEAR_MIN, YEAR_MAX } from '@/types'
@@ -26,6 +30,38 @@ const { data: dbStatus } = useDbStatus()
 
 const isFirstRun = computed(() => dbStatus.value?.is_empty === true)
 const isRunning = computed(() => job.value?.status === 'running')
+
+// ── Admin unlock ──────────────────────────────────────────────────────────────
+//
+// Data management needs an admin token. It is never part of the build: the
+// operator types it here and it stays in their own browser. Visitors can read
+// the dashboard without one.
+
+const tokenInput = ref('')
+const unlocking = ref(false)
+const tokenError = ref('')
+
+async function unlock() {
+  const token = tokenInput.value.trim()
+  if (!token) return
+  unlocking.value = true
+  tokenError.value = ''
+  try {
+    if (await checkAdminToken(token)) {
+      setAdminToken(token)
+      tokenInput.value = ''
+    } else {
+      tokenError.value = 'Token rejected.'
+    }
+  } finally {
+    unlocking.value = false
+  }
+}
+
+function lock() {
+  clearAdminToken()
+  tokenError.value = ''
+}
 
 // ── Fetch new data ────────────────────────────────────────────────────────────
 
@@ -144,7 +180,7 @@ async function doReset() {
     <FetchProgressOverlay v-if="isRunning" :full-screen="true" />
 
     <div v-else class="modal-box">
-      <button v-if="!isFirstRun" class="close-btn" @click="showDataSetup = false">✕</button>
+      <button v-if="!isFirstRun || !hasAdminToken" class="close-btn" @click="showDataSetup = false">✕</button>
 
       <div class="modal-icon">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
@@ -154,6 +190,31 @@ async function doReset() {
         </svg>
       </div>
       <div class="modal-title">Data Setup</div>
+
+      <!-- ── Admin unlock ── -->
+      <div v-if="!hasAdminToken" class="lock-section">
+        <div class="lock-row">
+          <input
+            v-model="tokenInput"
+            type="password"
+            class="token-input"
+            placeholder="Admin token"
+            autocomplete="off"
+            @keyup.enter="unlock"
+          />
+          <Button size="sm" :disabled="!tokenInput || unlocking" @click="unlock">
+            {{ unlocking ? 'Checking…' : 'Unlock' }}
+          </Button>
+        </div>
+        <div v-if="tokenError" class="token-error">{{ tokenError }}</div>
+        <div class="section-note">
+          Data management is restricted. Viewing the dashboard needs no token.
+        </div>
+      </div>
+      <div v-else class="lock-row lock-row--unlocked">
+        <span class="lock-ok">Unlocked</span>
+        <button class="cancel-link" @click="lock">Lock</button>
+      </div>
 
       <!-- ── Fetch new data ── -->
       <div class="section-label">Fetch data</div>
@@ -187,7 +248,7 @@ async function doReset() {
 
       <div class="combo-count">{{ totalCombos }} year × variable combinations</div>
 
-      <Button class="action-btn" :disabled="selectedVars.length === 0 || isStarting" @click="onStart">
+      <Button class="action-btn" :disabled="!hasAdminToken || selectedVars.length === 0 || isStarting" @click="onStart">
         {{ isStarting ? 'Starting…' : 'Start Fetch' }}
       </Button>
 
@@ -211,7 +272,7 @@ async function doReset() {
               size="sm"
               variant="outline"
               class="var-row-btn"
-              :disabled="isRunning || busyVar !== null"
+              :disabled="!hasAdminToken || isRunning || busyVar !== null"
               @click="refreshVariable(key as Variable)"
             >
               {{ busyVar === key ? 'Starting…' : 'Refresh' }}
@@ -233,7 +294,7 @@ async function doReset() {
           <div v-if="newYearResult" class="new-year-result">
             <template v-if="newYearResult.new_years.length">
               <span class="new-year-found">New: {{ newYearResult.new_years.join(', ') }}</span>
-              <Button size="sm" :disabled="fetchingNewYears" @click="fetchNewYears">
+              <Button size="sm" :disabled="!hasAdminToken || fetchingNewYears" @click="fetchNewYears">
                 {{ fetchingNewYears ? 'Starting…' : 'Fetch' }}
               </Button>
             </template>
@@ -249,7 +310,7 @@ async function doReset() {
           size="sm"
           variant="outline"
           class="action-btn"
-          :disabled="backfilling || isRunning"
+          :disabled="!hasAdminToken || backfilling || isRunning"
           @click="doBackfill"
         >
           {{ backfilling ? 'Fetching metadata…' : 'Backfill network metadata' }}
@@ -269,11 +330,11 @@ async function doReset() {
         <!-- Reset -->
         <div class="section-label">Danger zone</div>
         <div v-if="!confirmReset">
-          <button class="danger-link" @click="confirmReset = true">Reset database…</button>
+          <button class="danger-link" :disabled="!hasAdminToken" @click="confirmReset = true">Reset database…</button>
         </div>
         <div v-else class="reset-confirm">
           <span class="reset-warn">Delete all data?</span>
-          <Button size="sm" variant="destructive" :disabled="resetting" @click="doReset">
+          <Button size="sm" variant="destructive" :disabled="!hasAdminToken || resetting" @click="doReset">
             {{ resetting ? 'Resetting…' : 'Yes, reset' }}
           </Button>
           <button class="cancel-link" @click="confirmReset = false">Cancel</button>
@@ -284,6 +345,43 @@ async function doReset() {
 </template>
 
 <style scoped>
+.lock-section { margin-bottom: 14px; }
+
+.lock-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lock-row--unlocked {
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-size: 11px;
+}
+
+.lock-ok { color: var(--muted-foreground, #6b7280); }
+
+.token-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border, #d4d8e0);
+  border-radius: 6px;
+  background: var(--surface, #fff);
+}
+
+.token-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #b42318;
+}
+
+.danger-link:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
