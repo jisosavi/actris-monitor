@@ -196,6 +196,33 @@ async def get_db_coverage() -> list[dict]:
     return [{"year": r["year"], "variable": r["variable"], "fetched_at": r["fetched_at"]} for r in rows]
 
 
+async def get_coverage_matrix() -> list[dict]:
+    """Coverage rows joined to their station count, for the MCP get_coverage tool.
+
+    `db_coverage` records which (year, variable) pairs have been fetched;
+    `network_stats.n_stations` is the count of stations that produced a usable mean
+    for that pair. LEFT JOIN because a fetch that stored records but no stats would
+    otherwise vanish from the matrix, which is exactly the gap an agent needs to see.
+    """
+    assert _db
+    async with _db.execute(
+        "SELECT c.year, c.variable, c.fetched_at, s.n_stations "
+        "FROM db_coverage c "
+        "LEFT JOIN network_stats s ON s.year = c.year AND s.variable = c.variable "
+        "ORDER BY c.variable, c.year"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [
+        {
+            "year":        r["year"],
+            "variable":    r["variable"],
+            "fetched_at":  r["fetched_at"],
+            "n_stations":  r["n_stations"],
+        }
+        for r in rows
+    ]
+
+
 async def get_latest_job() -> dict | None:
     assert _db
     async with _db.execute(

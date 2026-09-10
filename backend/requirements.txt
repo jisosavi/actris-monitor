@@ -11,3 +11,7 @@ httpx==0.28.1
 pandas==3.0.5
 numpy==2.5.3
 aiosqlite==0.22.1
+# MCP SDK v2 — the API differs from every v1 example (`mcp.server.MCPServer`, not
+# `FastMCP`). Brings httpx2, which is a separate distribution from the httpx pinned
+# above; both are installed and neither upgrades the other.
+mcp==2.2.0

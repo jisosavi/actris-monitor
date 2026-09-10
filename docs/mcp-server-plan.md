@@ -1,7 +1,14 @@
 # MCP Server Plan
 
 Design plan for exposing ACTRIS Monitor's data to AI agents over the Model Context
-Protocol (MCP). Written 2026-09-10. Nothing here is implemented yet.
+Protocol (MCP). Written 2026-09-10.
+
+**Status:** the transport is built and one tool of the eight (`get_coverage`) is
+live — see `backend/mcp_server/` and the MCP section of `CLAUDE.md`. The v1 spike
+deliberately proved the mount, the Host allowlist, the rate limiter and the
+response conventions against a real client before writing seven more tools against
+guesses. Everything below still describes the target; the notes marked
+**implemented** or **superseded** record where reality has moved.
 
 ## Decisions already made
 
@@ -52,22 +59,42 @@ Layout inside `backend/`:
 
 ```
 backend/
-├── main.py            # mounts /mcp alongside /api
-├── mcp/
-│   ├── server.py      # tool + resource registration
+├── main.py            # mounts /mcp alongside /api (mount stays LAST in the file)
+├── variables.py       # implemented: one definition per variable, shared by all three
+├── mcp_server/        # NOT "mcp/" — see below
+│   ├── server.py      # tool + resource registration, transport security
 │   ├── tools.py       # the 8 tools
-│   └── formatting.py  # truncation, provenance, error messages
+│   ├── formatting.py  # truncation, provenance, error messages
+│   └── limits.py      # implemented: rate limit + concurrency cap
 ├── database.py        # unchanged, imported by both
 └── ebas_thredds.py    # unchanged, imported by both
 ```
 
-Add the MCP dependency to `backend/requirements.txt`; `backend/Dockerfile` should
-need no change. Work on a `feat/mcp-server` branch so `main` stays deployable
-during the schema migration.
+**The package is `mcp_server/`, not `mcp/`.** `backend/` is the working directory
+and imports are flat (`import database`), so a local `mcp/` package would shadow
+the installed `mcp` distribution and break its own import.
 
-**Run the MCP transport stateless.** Railway restarts and redeploys containers
-freely; stateless Streamable HTTP needs no session affinity and loses nothing on a
-cold start.
+Add the MCP dependency to `backend/requirements.txt`. `backend/Dockerfile` needed
+one change after all: `--proxy-headers --forwarded-allow-ips="*"`, because Railway
+terminates TLS and without it uvicorn builds `http://` redirects (which MCP clients
+refuse) and the rate limiter sees the proxy as every caller.
+
+### SDK reality (v2, `mcp==2.2.0`)
+
+This plan was written against the v1 API. Four corrections:
+
+- `from mcp.server import MCPServer` — not `FastMCP`. Response models are Pydantic,
+  and `structured_content` comes for free from the return annotation.
+- **A mounted sub-app's lifespan never runs.** The host app must enter
+  `mcp.session_manager.run()`, and the manager exists only after
+  `streamable_http_app()` has been called.
+- **DNS-rebinding protection is on by default, allowlisting localhost only.** Behind
+  a real hostname every request is `421` until `transport_security=` is given an
+  allowlist. This is the most likely way a first deploy fails.
+- **`stateless_http=True` is a legacy-only knob.** On protocol 2026-07-28 a request
+  is one self-contained POST with no session id, so there is nothing for Railway to
+  be sticky about and nothing to configure. Set for the legacy leg only, which costs
+  nothing here because the server needs no server-to-client back-channel.
 
 **The MCP surface is read-only.** Do not expose `start_fetch`, `reset`, or
 `backfill_networks` as tools. Agents retry on ambiguity and a retried reset is
@@ -94,7 +121,7 @@ and periods are ISO dates, so monthly slots in without breaking anything.
 | `get_ranking(period, variable, network?, country?, limit)` | Highest-to-lowest — the ranking chart as data. |
 | `get_network_stats(period_range, variable, network?)` | median / q1 / q3 / min / max / n_stations. |
 | `get_change(variable, from_period, to_period, scope)` | Computed deltas, absolute and %, rankable. Its own tool because "which stations declined most 2005→2020" across ~200 stations is where agents fumble doing arithmetic by hand. |
-| `get_coverage()` | The period × variable availability matrix, so an agent can check instead of discovering gaps through failures. |
+| `get_coverage()` | **Implemented.** The period × variable availability matrix, so an agent can check instead of discovering gaps through failures. Also returns each variable's definition (unit, instrument, wavelength, QC level) so values can be described without a second call. |
 
 `find_station` is the highest-value tool in the list. Agents never say `FI0050R`.
 Without fuzzy resolution, most sessions open with a failed call.
@@ -146,15 +173,34 @@ Cheap to add, disproportionately useful:
 `/api/db/reset`, `/api/start-fetch`, `/api/backfill-networks`. Anyone who finds the
 Railway URL can wipe the database or pin the instance against NILU's server.
 
-For `/mcp` itself, the choice depends on distribution:
+**Update:** the three mutating POSTs are now guarded by `require_admin`
+(`X-Admin-Token` against `ADMIN_TOKEN`, failing closed). `allow_origins` still
+defaults to `*` and remains open.
+
+**Superseded — `/mcp` is unauthenticated by design.** The bearer-token vs OAuth 2.1
+choice below assumed the endpoint needed an identity. It does not: the tools are
+read-only over public EBAS data served from our own SQLite, so a token would protect
+the container, not the data. That is also how hosted open-data MCP servers generally
+run — the alternative pattern, a local stdio package with no auth at all, has the
+same property for the same reason.
+
+What replaced it (`mcp_server/limits.py`): a sliding-window per-address limit
+(`MCP_RATE_LIMIT_PER_MINUTE`, default 60) and a global concurrency cap
+(`MCP_MAX_CONCURRENT`, default 8) wrapped around the MCP app only, answering `429`
+and `503` with `Retry-After` and a message that tells an agent to batch rather than
+poll. Both counters are per-process: replicating the service multiplies the
+effective limit.
+
+Revisit if the endpoint is ever listed publicly as a connector, which needs OAuth
+2.1 regardless, or if per-user quota becomes necessary:
 
 - **Bearer token header** — pragmatic for a handful of known users, roughly an
-  hour of work, and supported by Claude Desktop/Code custom connectors.
+  hour of work, and supported by Claude Desktop/Code custom connectors. Note the
+  SDK's `TokenVerifier` path requires `AuthSettings(issuer_url=...)` pointing at a
+  real authorization server, so a static-token verifier publishes a discovery
+  document that points nowhere; plain ASGI middleware is the honest shortcut.
 - **OAuth 2.1** — what the MCP spec points at, and what a publicly listed
   connector needs. Meaningfully more work.
-
-Plus a per-token rate limit and a global concurrency cap on anything that can
-reach NILU.
 
 ## Forward-compatibility for monthly
 
@@ -191,19 +237,30 @@ into someone's paper. That raises the bar:
 
 1. **`data_coverage` is a boolean in disguise.** `ebas_thredds.py` sets
    `1.0 if values else 0.0`. An agent reading `data_coverage: 1.0` will report
-   full-year coverage for a station with two months of data. Either compute it
-   properly or rename the field to `has_data` in the MCP layer. **Blocking for v1.**
+   full-year coverage for a station with two months of data. **Handled for v1 by
+   disclosure, not by computation:** the MCP layer never emits the field, and every
+   response's `provenance.coverage_basis` states that coverage is presence only. The
+   real figure lands with the monthly work, which re-fetches anyway.
 2. **Unweighted mean of means.** Multi-file stations use `np.mean(values)` over
-   per-file means without weighting by valid sample count. **Blocking for v1.**
-3. **Wavelength discrepancy.** `TARGET_WAVELENGTH` is `{"scattering": 525.0,
-   "absorption": 520.0}` while the labels in `main.py` and the README say 550 nm.
-   Whichever is right, an agent repeats the label verbatim. Needs an answer;
-   may not need a code change.
+   per-file means without weighting by valid sample count. **Same treatment:**
+   `provenance.mean_method` says so in every payload. Fixing it properly requires
+   `_fetch_file_mean` to return valid-sample counts, i.e. a re-fetch.
+3. ~~**Wavelength discrepancy.**~~ **Resolved.** The constants (525 nm scattering,
+   520 nm absorption) were right and the "550 nm" labels were wrong. Both now come
+   from `backend/variables.py`, the single definition of a variable, and
+   `wavelength_nm` is in every MCP response. Note selection is nearest-neighbour
+   with no tolerance check, which the response says too.
 4. **QC flags.** Confirm what `lev2` selection already guarantees and whether any
    further EBAS flag filtering is warranted.
 
 ## Phasing
 
+- **v1 spike — transport + one tool: done.** Mount, Host allowlist, rate limiter and
+  the response conventions, verified against a real MCP client.
+- **v1 remainder — the other seven tools, then pre-population.** `find_station`
+  first: agents never say `FI0050R`, so without fuzzy resolution most sessions open
+  with a failed call. It needs an index — `idx_sr_lookup` leads with `year`, so a
+  lookup by `station_id` alone is a full scan today.
 - **v1 — annual, remote, authed:** ~3–5 days including hardening and
   pre-population.
 - **v2 — monthly:** ~1 week, mostly wall-clock time re-running the fetch job
@@ -211,8 +268,9 @@ into someone's paper. That raises the bar:
 
 ## Keep the core decoupled
 
-`mcp/tools.py` imports from `database.py` — never from FastAPI, never from the
-route handlers. If we later publish a standalone stdio package, that boundary is
+`mcp_server/tools.py` imports from `database.py` and `variables.py` — never from
+FastAPI, never from `main`, never from the route handlers. It does not even import
+the MCP SDK: registration happens in `server.py`. If we later publish a standalone stdio package, that boundary is
 what makes it a day of work instead of a rewrite.
 
 ## Load on NILU

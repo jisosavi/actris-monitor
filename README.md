@@ -12,9 +12,11 @@ For inspiration, thanks to research professor Antti Hyvärinen / Finnish Meteoro
 
 **Particle Number Concentration (N)** — Total aerosol particle count per cm³, measured by Condensation Particle Counters (CPC). Primary indicator of new particle formation events and anthropogenic pollution.
 
-**Scattering Coefficient (σ_sp, 550 nm)** — Aerosol light scattering at 550 nm measured by nephelometers. Relates to aerosol optical depth and visibility reduction.
+**Scattering Coefficient (σ_sp, 525 nm)** — Aerosol light scattering at 525 nm measured by nephelometers. Relates to aerosol optical depth and visibility reduction.
 
-**Absorption Coefficient (σ_ap, 550 nm)** — Aerosol light absorption at 550 nm measured by filter absorption photometers. Indicator of black carbon and light-absorbing aerosol loading.
+**Absorption Coefficient (σ_ap, 520 nm)** — Aerosol light absorption at 520 nm measured by filter absorption photometers. Indicator of black carbon and light-absorbing aerosol loading.
+
+Wavelengths are the values the fetch targets (`backend/variables.py`); selection from each source file is nearest-neighbour, so an individual file may carry a nearby wavelength instead.
 
 ## Screenshots
 

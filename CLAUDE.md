@@ -16,16 +16,18 @@ THREDDS OPeNDAP server at NILU and cached in SQLite. Three variables, Level 2
 
 ```
 backend/          FastAPI app
-  main.py         routes, VARIABLES dict, lifespan
+  main.py         routes, lifespan, /mcp mount (must stay last — see below)
+  variables.py    the three variables, defined once: label, unit, instrument, wavelength
   ebas_thredds.py THREDDS catalog + OPeNDAP client  ← the valuable, subtle part
   database.py     all SQLite reads/writes go through here
   aggregation.py  station records → annual stats / network stats
   fetch_jobs.py   single background fetch job, progress tracked in DB
+  mcp_server/     MCP endpoint at /mcp — server.py, tools.py, formatting.py, limits.py
 frontend/src/
   composables/useStationData.ts  axios instance + all TanStack Query hooks
   stores/stations.ts             Pinia UI state (year, variable, filters)
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
-docs/mcp-server-plan.md          design plan for an MCP server (not implemented)
+docs/mcp-server-plan.md          MCP design plan + roadmap (one of 8 tools built)
 ```
 
 ## Things that are easy to get wrong
@@ -52,8 +54,12 @@ it is the reason the app is usable.
   a coverage fraction, despite the name.
 - Stations with several files in a year use `np.mean(values)`: an unweighted mean
   of per-file means.
-- `TARGET_WAVELENGTH` is 525 nm (scattering) and 520 nm (absorption) while the
-  labels in `main.py` and the README say 550 nm. Unresolved.
+- ~~`TARGET_WAVELENGTH` vs the 550 nm labels~~ — resolved: the constants (525 nm
+  scattering, 520 nm absorption) were right and the labels were wrong. Both now
+  come from `variables.py`, which is the single definition of a variable's label,
+  unit, instrument, netCDF name and target wavelength.
+- Wavelength selection is nearest-neighbour with **no tolerance check**, so a file
+  offering only a distant wavelength is silently accepted.
 
 **The mutating endpoints require an admin token.** `POST /api/db/reset`,
 `/api/start-fetch` and `/api/backfill-networks` are guarded by `require_admin`,
@@ -77,6 +83,49 @@ token is the actual protection.
 **Be polite to NILU.** Their THREDDS server is a shared research resource. Results
 are cached 24 h and concurrency is capped at `_MAX_CONCURRENT = 20`. Don't raise
 that or add retry loops without a good reason.
+
+## The MCP endpoint (`/mcp`)
+
+Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak
+Streamable HTTP. `backend/mcp_server/` holds it and `docs/mcp-server-plan.md` has
+the design and the roadmap — one of the eight planned tools (`get_coverage`) exists.
+
+Four things that break it, all of them silently:
+
+**The mount must stay at the bottom of `main.py`.** It is mounted at `/` so the
+endpoint path is exactly `/mcp`, and Starlette tries routes in order — a root mount
+matches everything, so any route declared after it is unreachable. (Mounting at
+`/mcp` instead would serve `/mcp/` and answer `/mcp` with a 307 that MCP clients
+don't follow.)
+
+**The host app owns the session manager.** A mounted sub-app's lifespan never runs,
+so `main.py`'s lifespan enters `mcp.session_manager.run()`. Without it the first
+request dies with `RuntimeError: Task group is not initialized`. The manager only
+exists after `streamable_http_app()` has been called, which is why `mcp_app` is
+built at import time.
+
+**`MCP_ALLOWED_HOSTS` is required in deployment.** The SDK arms DNS-rebinding
+protection with a localhost-only allowlist by default, so behind a real hostname
+every request gets `421 Misdirected Request` and the reason appears only in the
+server log. A bare hostname automatically also allows `<host>:*`.
+
+**Never call `database.init_db()` from the MCP layer.** It repoints the
+module-global connection without closing the old one *and* flips every
+`status='running'` fetch job to `'failed'`. The tools rely on the lifespan having
+done it once.
+
+Two design rules worth keeping: `mcp_server/tools.py` imports `database` and
+`variables` only — never FastAPI, never `main` — which is what would make a
+standalone stdio package cheap later. And the surface is **read-only**: no
+`start_fetch`, no `reset`, no `backfill-networks`, because agents retry on
+ambiguity and a retried reset is unrecoverable.
+
+The endpoint is **unauthenticated by design** — it serves public EBAS data from our
+own database, so a token would protect the container, not the data. The protection
+is instead `MCP_RATE_LIMIT_PER_MINUTE` (per address) and `MCP_MAX_CONCURRENT`, both
+in-process counters: replicating the service multiplies the effective limit.
+Nothing in the MCP path may reach NILU — a tool call serves from SQLite or reports
+the data as absent.
 
 ## Running locally
 

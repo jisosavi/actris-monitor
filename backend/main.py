@@ -12,22 +12,15 @@ from pydantic import BaseModel
 
 from ebas_thredds import EbasThreddsClient
 from aggregation import compute_annual_stats, compute_network_stats
+from variables import VARIABLES as VARIABLE_DEFS
+from mcp_server.server import build_asgi_app as build_mcp_app, mcp
 import database
 import fetch_jobs
 
+# Label and unit come from variables.py; this keeps the {key: {"label", "unit"}}
+# shape that the routes and fetch_jobs already read.
 VARIABLES: dict[str, dict] = {
-    "N": {
-        "label": "Particle Number Concentration",
-        "unit": "cm⁻³",
-    },
-    "scattering": {
-        "label": "Scattering Coefficient 550 nm",
-        "unit": "Mm⁻¹",
-    },
-    "absorption": {
-        "label": "Absorption Coefficient 550 nm",
-        "unit": "Mm⁻¹",
-    },
+    k: {"label": v.label, "unit": v.unit} for k, v in VARIABLE_DEFS.items()
 }
 
 VariableKey = Literal["N", "scattering", "absorption"]
@@ -37,13 +30,24 @@ YEAR_MAX = datetime.now().year
 
 client = EbasThreddsClient()
 
+# Built at import time because `mcp.session_manager` does not exist until the ASGI
+# app has been constructed, and the lifespan below needs the manager.
+mcp_app = build_mcp_app()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await client.start()
     db_path = _os.environ.get("DATABASE_PATH", "/data/actris.db")
     await database.init_db(db_path)
-    yield
+    # A mounted sub-application's own lifespan never runs, so the MCP session
+    # manager has to be started here. Without this the first request to /mcp fails
+    # with "RuntimeError: Task group is not initialized". The MCP tools also rely on
+    # the init_db above: they must never call it themselves, because a second
+    # init_db repoints the module-global connection and marks any running fetch job
+    # as failed.
+    async with mcp.session_manager.run():
+        yield
     if fetch_jobs.is_job_running():
         fetch_jobs._active_task.cancel()  # type: ignore[attr-defined]
         try:
@@ -62,8 +66,12 @@ _ORIGINS_LIST = [o.strip() for o in _ALLOWED_ORIGINS.split(",")] if _ALLOWED_ORI
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ORIGINS_LIST,
-    allow_methods=["GET", "POST"],
+    # DELETE and Mcp-Session-Id are for browser-based MCP clients on /mcp: Streamable
+    # HTTP ends a session with DELETE, and a browser cannot read the session id back
+    # unless CORS exposes that header by name.
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
+    expose_headers=["Mcp-Session-Id"],
 )
 
 
@@ -253,6 +261,16 @@ async def get_warmup_status():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── MCP endpoint ──────────────────────────────────────────────────────────────
+#
+# Must stay BELOW every route above it: Starlette tries routes in order and a
+# root mount matches every path, so anything declared after this line is
+# unreachable. Mounting at "/" with the SDK's default streamable_http_path serves
+# the endpoint at exactly /mcp — mounting at "/mcp" would instead serve /mcp/ and
+# answer /mcp with a 307 that MCP clients do not follow.
+app.mount("/", app=mcp_app)
 
 
 if __name__ == "__main__":
