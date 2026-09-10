@@ -5,8 +5,14 @@ services:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      # Keep in sync with the volume below. Railway mounts its own volume at /data.
+      - DATABASE_PATH=/data/actris.db
+      - ALLOWED_ORIGIN=http://localhost:5173
     volumes:
       - ./backend:/app
+      # Named volume so the SQLite DB survives container rebuilds — without this
+      # every rebuild drops the database and re-fetches the whole catalog from NILU.
+      - actris-db:/data
     working_dir: /app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
@@ -21,3 +27,6 @@ services:
     command: npm run dev -- --host 0.0.0.0
     depends_on:
       - backend
+
+volumes:
+  actris-db:

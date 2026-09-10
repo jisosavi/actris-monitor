@@ -24,3 +24,12 @@ frontend/.vite/
 
 # Docker
 *.log
+
+# Local data (SQLite DB when running natively; see backend/.env.example)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Claude Code — personal settings stay local, shared .claude/settings.json is committable
+.claude/settings.local.json
