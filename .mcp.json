@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "actris-monitor": {
+      "type": "http",
+      "url": "https://actris-monitor-production.up.railway.app/mcp"
+    }
+  }
+}

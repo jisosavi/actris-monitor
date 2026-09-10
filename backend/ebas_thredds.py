@@ -30,27 +30,24 @@ from typing import Any
 import httpx
 import numpy as np
 
+from variables import VARIABLES
+
 logger = logging.getLogger(__name__)
 
 CATALOG_URL = "https://thredds.nilu.no/thredds/catalog/ebas/catalog.xml"
 OPENDAP_BASE = "https://thredds.nilu.no/thredds/dodsC/ebas"
 
+# Derived from variables.py so there is one definition, not two. The shapes below
+# are what the rest of this module already expects: a list of instrument tokens per
+# variable, and 0.0 standing for "no wavelength dimension" (see _compute_annual_mean).
 INSTRUMENT_MAP: dict[str, list[str]] = {
-    "N":          ["cpc"],
-    "scattering": ["nephelometer"],
-    "absorption": ["filter_absorption_photometer"],
+    k: list(v.instruments) for k, v in VARIABLES.items()
 }
 
-NC_VAR: dict[str, str] = {
-    "N":          "particle_number_concentration_amean",
-    "scattering": "aerosol_light_scattering_coefficient_amean",
-    "absorption": "aerosol_absorption_coefficient_amean",
-}
+NC_VAR: dict[str, str] = {k: v.nc_var for k, v in VARIABLES.items()}
 
 TARGET_WAVELENGTH: dict[str, float] = {
-    "N":          0.0,
-    "scattering": 525.0,
-    "absorption": 520.0,
+    k: (v.wavelength_nm or 0.0) for k, v in VARIABLES.items()
 }
 
 _TTL = timedelta(hours=24)

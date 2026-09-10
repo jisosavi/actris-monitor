@@ -196,6 +196,84 @@ async def get_db_coverage() -> list[dict]:
     return [{"year": r["year"], "variable": r["variable"], "fetched_at": r["fetched_at"]} for r in rows]
 
 
+async def get_station_catalog() -> list[dict]:
+    """Every distinct station with its metadata and which years hold data.
+
+    Backs the MCP `actris://catalog/stations` resource. Two queries rather than a
+    join because the second one fans out to one row per (station, variable, year)
+    and would multiply the metadata.
+
+    **Metadata is picked from the station's most recent year.** It is denormalized
+    onto every (year, variable) row and the rows can disagree — `update_station_meta_bulk`
+    rewrites lat/lon/networks for all of a station's rows but leaves `name` and
+    `country` as whatever each fetch wrote. The `MAX(year)` below is what makes the
+    choice deterministic: SQLite guarantees that bare columns selected alongside a
+    `MAX()` come from the row that produced the maximum.
+
+    Coverage counts a year only when it holds a usable mean (`> 0`), matching what
+    `compute_annual_stats` treats as data — a station-year with a null or zero mean
+    is not something a caller can plot.
+    """
+    assert _db
+    async with _db.execute(
+        "SELECT station_id, name, lat, lon, country, networks, MAX(year) AS latest_year "
+        "FROM station_records GROUP BY station_id ORDER BY station_id"
+    ) as cur:
+        meta_rows = await cur.fetchall()
+
+    async with _db.execute(
+        "SELECT station_id, variable, year FROM station_records "
+        "WHERE mean IS NOT NULL AND mean > 0 "
+        "ORDER BY station_id, variable, year"
+    ) as cur:
+        coverage_rows = await cur.fetchall()
+
+    years: dict[str, dict[str, list[int]]] = {}
+    for r in coverage_rows:
+        years.setdefault(r["station_id"], {}).setdefault(r["variable"], []).append(r["year"])
+
+    return [
+        {
+            "id":           r["station_id"],
+            "name":         r["name"],
+            "lat":          r["lat"],
+            "lon":          r["lon"],
+            "country":      r["country"],
+            "networks":     r["networks"],
+            "latest_year":  r["latest_year"],
+            "years":        years.get(r["station_id"], {}),
+        }
+        for r in meta_rows
+    ]
+
+
+async def get_coverage_matrix() -> list[dict]:
+    """Coverage rows joined to their station count, for the MCP get_coverage tool.
+
+    `db_coverage` records which (year, variable) pairs have been fetched;
+    `network_stats.n_stations` is the count of stations that produced a usable mean
+    for that pair. LEFT JOIN because a fetch that stored records but no stats would
+    otherwise vanish from the matrix, which is exactly the gap an agent needs to see.
+    """
+    assert _db
+    async with _db.execute(
+        "SELECT c.year, c.variable, c.fetched_at, s.n_stations "
+        "FROM db_coverage c "
+        "LEFT JOIN network_stats s ON s.year = c.year AND s.variable = c.variable "
+        "ORDER BY c.variable, c.year"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [
+        {
+            "year":        r["year"],
+            "variable":    r["variable"],
+            "fetched_at":  r["fetched_at"],
+            "n_stations":  r["n_stations"],
+        }
+        for r in rows
+    ]
+
+
 async def get_latest_job() -> dict | None:
     assert _db
     async with _db.execute(

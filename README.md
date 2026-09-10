@@ -12,9 +12,11 @@ For inspiration, thanks to research professor Antti Hyvärinen / Finnish Meteoro
 
 **Particle Number Concentration (N)** — Total aerosol particle count per cm³, measured by Condensation Particle Counters (CPC). Primary indicator of new particle formation events and anthropogenic pollution.
 
-**Scattering Coefficient (σ_sp, 550 nm)** — Aerosol light scattering at 550 nm measured by nephelometers. Relates to aerosol optical depth and visibility reduction.
+**Scattering Coefficient (σ_sp, 525 nm)** — Aerosol light scattering at 525 nm measured by nephelometers. Relates to aerosol optical depth and visibility reduction.
 
-**Absorption Coefficient (σ_ap, 550 nm)** — Aerosol light absorption at 550 nm measured by filter absorption photometers. Indicator of black carbon and light-absorbing aerosol loading.
+**Absorption Coefficient (σ_ap, 520 nm)** — Aerosol light absorption at 520 nm measured by filter absorption photometers. Indicator of black carbon and light-absorbing aerosol loading.
+
+Wavelengths are the values the fetch targets (`backend/variables.py`); selection from each source file is nearest-neighbour, so an individual file may carry a nearby wavelength instead.
 
 ## Screenshots
 
@@ -70,6 +72,22 @@ The pydap library is not used. All OPeNDAP access goes through httpx against the
 ### Frontend
 
 The frontend uses TanStack Vue Query (1 h stale time) for data fetching and Pinia for UI state. On variable or year change the query cache is checked before making a backend request.
+
+## For AI agents (MCP)
+
+The same backend exposes its data over the [Model Context Protocol](https://modelcontextprotocol.io) at `/mcp` (Streamable HTTP), so an agent can query the network directly instead of scraping the dashboard:
+
+```
+https://actris-monitor-production.up.railway.app/mcp
+```
+
+`.mcp.json` in this repository points at it, so Claude Code offers the connector when you open the project (it asks before enabling it). For other clients, add the URL as an HTTP/Streamable-HTTP MCP server.
+
+**Open, and rate-limited rather than authenticated.** The tools are read-only over public EBAS data served from this project's own database, so there is no credential to hand out — but there is a shared container behind the URL. Requests are limited per address (60/minute) with a cap on concurrency; over either, you get `429`/`503` with `Retry-After`. Batch related questions instead of polling. Authentication may be introduced later if the endpoint attracts abuse or needs per-user quota — see `docs/mcp-server-plan.md`.
+
+**Please cite the data.** Every tool response carries a `provenance` block naming EBAS/ACTRIS and the citation expectation. The measurements are contributed by station principal investigators; acknowledge them and EBAS/ACTRIS in any published use.
+
+One tool exists today, `get_coverage`, which returns the period × variable availability matrix and each variable's definition. The full reference is in [docs/mcp-reference.md](docs/mcp-reference.md) (generated from the server, so it cannot drift from what the agent is told); seven more tools are designed in [docs/mcp-server-plan.md](docs/mcp-server-plan.md). Two caveats the responses state explicitly and any consumer should repeat: means are unweighted across a station's files within a year, and no figure says what fraction of a period was actually observed.
 
 ## Technical Stack
 
