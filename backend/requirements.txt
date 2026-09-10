@@ -1,6 +1,13 @@
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-httpx>=0.28.0
-pandas>=2.2.0
-numpy>=2.0.0
-aiosqlite>=0.20.0
+# Direct dependencies, pinned to the versions verified on Python 3.12.
+# The container is python:3.12-slim and Railway builds from it — keep the local
+# virtualenv on 3.12 so resolution matches.
+#
+# To upgrade: bump a pin here, reinstall, run the app, then commit.
+#   ./.venv/bin/pip install -r backend/requirements.txt
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+httpx==0.28.1
+pandas==3.0.5
+numpy==2.5.3
+aiosqlite==0.22.1
