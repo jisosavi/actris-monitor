@@ -90,6 +90,12 @@ Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak
 Streamable HTTP. `backend/mcp_server/` holds it and `docs/mcp-server-plan.md` has
 the design and the roadmap — one of the eight planned tools (`get_coverage`) exists.
 
+**`docs/mcp-tools.md` is generated — never edit it by hand.** After adding or
+changing a tool, run `cd backend && python scripts/dump_mcp_tools.py`.
+`--check` exits 1 if the committed doc is stale, for CI. A tool's docstring *is*
+the description the model reads, so a hand-written second copy could disagree with
+the agent's own instructions and nothing would notice.
+
 Four things that break it, all of them silently:
 
 **The mount must stay at the bottom of `main.py`.** It is mounted at `/` so the
