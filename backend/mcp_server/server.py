@@ -17,7 +17,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.types import ASGIApp
 
-from . import tools
+from . import prompts, resources, tools
 from .limits import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
@@ -51,22 +51,47 @@ mcp = MCPServer(
 # from a closed set — this database — not the open web.
 _READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 
-def _register(fn, *, title: str) -> None:
-    """Register a tool, dedenting its docstring first.
+def _doc(fn) -> str:
+    """A docstring the client can render.
 
     The SDK passes `__doc__` through verbatim, so every line after the first
     arrives with the source's indentation — and four leading spaces is a code block
-    to anything that renders the description as markdown. `cleandoc` is the whole
-    fix, applied here so no tool has to be written with an ugly docstring.
+    to anything that renders the text as markdown. `cleandoc` is the whole fix,
+    applied here so nothing has to be written with an ugly docstring.
     """
-    mcp.tool(
-        title=title,
-        description=inspect.cleandoc(fn.__doc__ or ""),
-        annotations=_READ_ONLY,
-    )(fn)
+    return inspect.cleandoc(fn.__doc__ or "")
 
 
-_register(tools.get_coverage, title="Data coverage")
+def _register_tool(fn, *, title: str) -> None:
+    mcp.tool(title=title, description=_doc(fn), annotations=_READ_ONLY)(fn)
+
+
+def _register_resource(fn, *, uri: str, title: str, mime_type: str) -> None:
+    mcp.resource(uri, title=title, description=_doc(fn), mime_type=mime_type)(fn)
+
+
+_register_tool(tools.get_coverage, title="Data coverage")
+
+# Resources are addressed by URI, never by function name, and the SDK does not call
+# the function during resources/list — only when a client actually reads one.
+_register_resource(
+    resources.station_catalog,
+    uri="actris://catalog/stations",
+    title="Station catalogue",
+    mime_type="application/json",
+)
+_register_resource(
+    resources.citation,
+    uri="actris://citation",
+    title="How to cite this data",
+    mime_type="text/markdown",
+)
+
+# Prompts are chosen by a person from a menu, so the title is a UI label.
+mcp.prompt(
+    title="Data availability briefing",
+    description=_doc(prompts.data_availability_briefing),
+)(prompts.data_availability_briefing)
 
 
 def _transport_security() -> TransportSecuritySettings | None:

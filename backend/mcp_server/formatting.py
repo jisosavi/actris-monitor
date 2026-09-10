@@ -89,6 +89,29 @@ class VariableInfo(BaseModel):
         )
 
 
+def compress_years(years: list[int]) -> str:
+    """Render a sorted year list as compact ranges: [2000, 2001, 2003] -> "2000-2001,2003".
+
+    The station catalog carries a coverage summary for every station and variable,
+    and a client caches and re-reads it. Year *lists* would roughly double the
+    document for no added information — a reader needs to know which spans exist,
+    not to count the members.
+    """
+    if not years:
+        return ""
+    ordered = sorted(set(years))
+    spans: list[str] = []
+    start = prev = ordered[0]
+    for year in ordered[1:]:
+        if year == prev + 1:
+            prev = year
+            continue
+        spans.append(str(start) if start == prev else f"{start}-{prev}")
+        start = prev = year
+    spans.append(str(start) if start == prev else f"{start}-{prev}")
+    return ",".join(spans)
+
+
 def annual_period(year: int) -> tuple[str, str]:
     """ISO start/end dates for a calendar year.
 

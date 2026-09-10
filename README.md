@@ -87,7 +87,7 @@ https://actris-monitor-production.up.railway.app/mcp
 
 **Please cite the data.** Every tool response carries a `provenance` block naming EBAS/ACTRIS and the citation expectation. The measurements are contributed by station principal investigators; acknowledge them and EBAS/ACTRIS in any published use.
 
-One tool exists today, `get_coverage`, which returns the period × variable availability matrix and each variable's definition. The full reference is in [docs/mcp-tools.md](docs/mcp-tools.md) (generated from the server, so it cannot drift from what the agent is told); seven more tools are designed in [docs/mcp-server-plan.md](docs/mcp-server-plan.md). Two caveats the responses state explicitly and any consumer should repeat: means are unweighted across a station's files within a year, and no figure says what fraction of a period was actually observed.
+One tool exists today, `get_coverage`, which returns the period × variable availability matrix and each variable's definition. The full reference is in [docs/mcp-reference.md](docs/mcp-reference.md) (generated from the server, so it cannot drift from what the agent is told); seven more tools are designed in [docs/mcp-server-plan.md](docs/mcp-server-plan.md). Two caveats the responses state explicitly and any consumer should repeat: means are unweighted across a station's files within a year, and no figure says what fraction of a period was actually observed.
 
 ## Technical Stack
 

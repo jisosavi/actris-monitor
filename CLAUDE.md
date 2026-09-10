@@ -22,12 +22,20 @@ backend/          FastAPI app
   database.py     all SQLite reads/writes go through here
   aggregation.py  station records → annual stats / network stats
   fetch_jobs.py   single background fetch job, progress tracked in DB
-  mcp_server/     MCP endpoint at /mcp — server.py, tools.py, formatting.py, limits.py
+  mcp_server/     MCP endpoint at /mcp
+    server.py       the MCPServer instance, registration, transport security
+    tools.py        tools (model calls these)
+    resources.py    resources (the client attaches these)
+    prompts.py      prompts (a person picks these from a menu)
+    formatting.py   response envelope, provenance, shared rendering
+    limits.py       rate limit + concurrency cap (stands in for auth)
+  scripts/dump_mcp_tools.py      regenerates docs/mcp-reference.md
 frontend/src/
   composables/useStationData.ts  axios instance + all TanStack Query hooks
   stores/stations.ts             Pinia UI state (year, variable, filters)
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
-docs/mcp-server-plan.md          MCP design plan + roadmap (one of 8 tools built)
+docs/mcp-server-plan.md          MCP design plan + roadmap (what is not built yet)
+docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
 ```
 
 ## Things that are easy to get wrong
@@ -90,7 +98,7 @@ Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak
 Streamable HTTP. `backend/mcp_server/` holds it and `docs/mcp-server-plan.md` has
 the design and the roadmap — one of the eight planned tools (`get_coverage`) exists.
 
-**`docs/mcp-tools.md` is generated — never edit it by hand.** After adding or
+**`docs/mcp-reference.md` is generated — never edit it by hand.** After adding or
 changing a tool, run `cd backend && python scripts/dump_mcp_tools.py`.
 `--check` exits 1 if the committed doc is stale, for CI. A tool's docstring *is*
 the description the model reads, so a hand-written second copy could disagree with

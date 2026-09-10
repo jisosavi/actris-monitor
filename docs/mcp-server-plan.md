@@ -157,14 +157,96 @@ largest lever on real-world success rate.
 
 ## Resources and prompts
 
-Cheap to add, disproportionately useful:
+Three mechanisms, three distinct failure modes. **Tools** are verbs the model calls
+— they fix "the agent can't get the data". **Resources** are documents the
+application attaches — they fix "the agent doesn't know what exists", which is a
+real problem here because agents never say `FI0050R`. **Prompts** are procedures
+with the caveats baked in — they fix "the agent states a number as fact without the
+caveats", the specific risk of a dataset with unweighted means and presence-only
+coverage.
 
-- **Resources** — the station catalog (loaded once instead of a tool call per
-  session), variable definitions with instrument and method notes, and an
-  EBAS attribution + citation document.
-- **Prompts** — `station_trend_report`, `network_comparison`, `anomaly_check`.
-  These encode the analyses we already know how to do properly, including the
-  caveats about coverage and instrument changes an agent won't apply unprompted.
+Claude Desktop surfaces resources and prompts in the composer under Connectors, so
+their titles are user-facing UI labels, not internal identifiers.
+
+### Resources
+
+**Implemented:**
+
+- `actris://catalog/stations` (`application/json`) — every station with identity,
+  position, networks, and a per-variable coverage summary as compact year ranges
+  (`"2000-2019,2021-2024"`). Attached once, it answers "which Finnish ACTRIS sites
+  measure absorption" and "what is Hyytiälä's station code" with **no tool call**,
+  removing the failed first call that otherwise opens a session.
+  - **Size is the design constraint: ~228 bytes per station, so ~50 KB (~13k
+    tokens) for the full network.** Hence year *ranges* rather than lists,
+    coordinates rounded to 4 dp, and no measurements in the document. It is an
+    attach-when-relevant resource, not something to load reflexively.
+  - Metadata is picked from each station's most recent year, because it is stored
+    per station-year and the rows can disagree — `update_station_meta_bulk` rewrites
+    lat/lon/networks for all of a station's rows but leaves `name`/`country` as
+    whatever each fetch wrote. `database.get_station_catalog` relies on SQLite
+    guaranteeing that bare columns beside a `MAX()` come from the row that produced
+    the maximum.
+  - **This does not retire `find_station`.** The resource serves clients that attach
+    it; the tool serves clients that ignore resources, sessions where 50 KB is better
+    spent elsewhere, and fuzzy matching done server-side ("Finnish forest site" →
+    `FI0050R`), which a raw JSON document cannot do. They share one DB helper.
+- `actris://citation` (`text/markdown`) — the attribution EBAS/ACTRIS and the
+  contributing PIs expect, in a form a person can paste into a manuscript. Not
+  redundant with the `provenance` field: provenance is machine-readable and aimed at
+  the model, this is a document aimed at a human. Same content, different audience.
+
+**Deliberately not built:**
+
+- `actris://variables` and `actris://coverage` — both already travel inside
+  `get_coverage`'s payload. A second copy creates two sources for one truth, and the
+  one that goes stale is the one nobody reads.
+- `actris://station/{id}` (templated) — attractive, but it is the same query as
+  `get_series`. Build the tool first and make the resource a thin wrapper over it,
+  or the query gets written twice.
+
+### Prompts
+
+**Implemented:** `data_availability_briefing(variable?)` — the only one the current
+tool surface can support. Instructs a model to call `get_coverage` and then report
+what exists, **name** the gaps, distinguish "period reporting zero stations" from
+"period never fetched", restate what `coverage_basis` and `mean_method` mean for the
+requested analysis, and refuse to approximate monthly figures from annual means.
+Modest analytical value; its real job was proving the prompt path surfaces in a
+client before the expensive ones get written.
+
+**Designed, blocked on tools — and specified now on purpose.** A prompt's checklist
+is a requirements document for the tools it calls, so writing it first surfaces
+return-shape requirements that tool design alone misses:
+
+- `station_trend_report(station, variable, from_period, to_period)` — resolve the
+  station, check coverage, fetch the series, then report against a fixed checklist:
+  state unit and wavelength from provenance rather than memory; say how many
+  requested periods actually have data and name the gaps; do not use the word
+  "trend" below a minimum number of periods; flag that a "low" year may be two
+  months of winter; flag an instrument change between endpoints, which alone can
+  move the number; carry the citation.
+  - **What that forces on `get_series`:** explicit gap markers rather than silently
+    omitted periods, a per-period valid-sample count, and the instrument per period.
+    None of it is in the schema today — `station_records` does not even store the
+    instrument.
+- `network_comparison(variable, period, network?)` — needs `get_ranking` and
+  `get_network_stats`, and **forces them to agree on what `n_stations` counts** and
+  to distinguish "no data" from a genuine zero. That distinction is live already:
+  2026 legitimately reports `n_stations: 0` for all three variables, because no
+  Level-2 data is published for the current year yet.
+- `anomaly_check(period, variable)` — needs a series plus network statistics for the
+  same period.
+
+### Sequencing
+
+1. **Done** — the two resources and `data_availability_briefing`, all implementable
+   against today's schema.
+2. **Next** — `find_station` and `get_series`, plus the index they need
+   (`idx_sr_lookup` leads with `year`, so a lookup by station code alone is a full
+   scan) and the instrument-per-period the trend report requires.
+3. **Then** — `station_trend_report` and `network_comparison`, which now have tools
+   to call.
 
 ## Auth and hardening
 
