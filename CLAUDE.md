@@ -66,10 +66,12 @@ it is the reason the app is usable.
   more than one file for 100 of 164 station-variable pairs, mixing size cuts for 56
   of them. Hyytiälä's 2019 scattering averages pm1, pm10 and a humidified tandem
   nephelometer together. A year-to-year step can therefore come from a file
-  appearing rather than from the atmosphere. **Do not "fix" this**: keeping the
-  calculation as it is was confirmed with Antti Hyvärinen (FMI) in September 2026.
-  It is disclosed in every MCP payload via `provenance.mean_method`, and that
-  disclosure is the mitigation — see the plan doc before changing any of it.
+  appearing rather than from the atmosphere. Disclosed in every MCP payload via
+  `provenance.mean_method`. **Do not improvise a fix**: Antti Hyvärinen (FMI)
+  specified the replacement in September 2026 — hourly → daily → monthly → annual,
+  75% coverage required at each step, humidified files excluded, size cuts
+  disregarded. It needs the re-fetch and it changes published numbers. See
+  *The agreed aggregation method* in the plan doc.
 - The filename's field `[3]` is the instrument *class* and never varies within a
   variable — `INSTRUMENT_MAP` selects on it. The instrument id is field `[8]` and
   the size cut is `[5]`; neither is parsed today.

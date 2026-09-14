@@ -137,10 +137,12 @@ These matter more than the tool list.
 
    `provenance.mean_method` now says all of this, in every payload.
 
-Limitation 1 needs the re-fetch. Limitation 2 is **intended behaviour**, confirmed
-with Antti Hyvärinen (FMI) in September 2026 — "keep the calculation as it is now" —
-so it is documented rather than fixed, and the disclosure above is the mitigation
-rather than a stopgap.
+**Both are superseded by a specified replacement.** See *The agreed aggregation
+method* below: hourly → daily → monthly → annual, 75% coverage required at each
+step, humidified data excluded, size cuts disregarded. It fixes limitation 1 by
+computing coverage for real and limitation 2 by removing the per-file averaging
+step. Until it is implemented, the disclosures above remain accurate and stay in
+every payload.
 
 ## Tests
 
@@ -188,33 +190,70 @@ what the prompts need:
   statistics, with "no data" kept distinct from a genuine zero, and a note where the
   stations being compared do not share a size cut.
 
-**The decision this deferred — now answered.** Whether a station-year should keep
-averaging every overlapping file, prefer one canonical matrix, or report each matrix
-as its own series was put to Antti Hyvärinen (FMI) in September 2026. The answer:
-**"Keep the calculation as it is now."**
+**The decision this deferred — answered, and then specified.** See
+**The agreed aggregation method** below: the question went to Antti Hyvärinen (FMI)
+in September 2026, and the answer replaces the current calculation rather than
+endorsing it. The composition backfill described here is superseded by it — there is
+no point labelling the composition of a mean that is about to be computed a
+different way.
 
-So the aggregation stays: every overlapping Level 2 file, per-file annual means,
-averaged unweighted. Three consequences:
+## The agreed aggregation method
 
-- **The re-fetch is no longer blocked on a science call.** Monthly can proceed
-  whenever it is worth the wall-clock.
-- **Disclosure is now the whole mitigation, not a stopgap.** The numbers are the
-  intended network-overview convention, but everything
-  `provenance.mean_method` says about them remains true — mixed measurands,
-  composition-driven steps. That text stays, and stays prominent.
-- **The composition backfill matters more, not less.** With the calculation fixed,
-  telling a reader *when the composition changed under it* is the only remaining way
-  to stop a file appearing in 2019 being read as an atmospheric trend.
+Specified by Antti Hyvärinen (FMI), September 2026, in answer to "what should a
+station's annual mean be made of?". It **supersedes an earlier, briefer reply of
+"keep the calculation as it is now"**, and it replaces what the code does today.
 
-Two things the answer does not settle, worth a follow-up rather than an assumption:
-whether "as it is now" is meant to include the unweighted part once valid-sample
-counts exist (the re-fetch makes weighting possible for the first time), and whether
-it refers to averaging per *file* or per distinct *matrix* — Hyytiälä's 2019
-scattering draws on three no-cut files, so per-file averaging weights no-cut three
-times over. The current code averages per file; anything stored at a coarser grain
-would silently change the published number.
+1. **Disregard size cuts.** `pm1`, `pm10`, `pm25` and no-cut files are all usable.
+   Do not filter on the matrix and do not split them into separate series.
+2. **Omit humidified data.** Note the catalogue spells this three ways —
+   `pm10_humidified` (10 files), `pm1_humidified` (9) and `aerosol_humidified` (5) —
+   so the rule must match *contains* `humidified`. Matching only the last of them
+   would keep 19 of the 24 files it is meant to drop.
+3. **Average stepwise, requiring 75% coverage at each step, and leave the step blank
+   rather than approximate it when coverage falls short:** hourly → daily, daily →
+   monthly, monthly → annual.
 
-## Then — monthly resolution
+### What this changes
+
+**It is a different number.** Today a station-year is the unweighted mean of
+per-file annual means over whatever hours exist. Under this method a station-year is
+the mean of its months, each the mean of its days, each the mean of its hours — and
+any level failing 75% is blank. Published values will move, and **many station-years
+will disappear**, because a station with three months of data currently yields a
+number and under this rule yields nothing. That is the intent: the blank is the
+honest answer.
+
+**It requires the re-fetch, but not extra fetching.** `_compute_annual_mean` already
+downloads the hourly slice and collapses it to one float immediately. The hourly
+data has been passing through the process all along and being discarded. The
+re-fetch is needed only because none of it was stored.
+
+**It makes monthly nearly free.** Monthly means are an intermediate product of step
+3, not a separate feature. "Fix the aggregation" and "add monthly resolution" are now
+one job, and `station_series` is the table both need.
+
+**It fixes both known limitations.** Coverage stops being a boolean in disguise —
+the 75% test computes it for real at each level — and the unweighted mean of
+per-file means disappears along with the per-file step.
+
+### Before implementing, three things to confirm
+
+None is a blocker for planning, all three change results:
+
+1. **Overlapping files.** With size cuts disregarded, a station can have `pm1` and
+   `pm10` files covering the same hour. Average them per timestamp into one hourly
+   series, or keep the highest-coverage file? Hyytiälä 2019 has seven overlapping
+   scattering files.
+2. **Coverage denominators.** Presumably 18 of 24 hours for a day, 75% of that
+   month's calendar days, and 9 of 12 months for a year — worth confirming, since it
+   decides how much of the record survives.
+3. **Non-hourly files.** 914 of 924 Level 2 files for our instruments are `1h`; the
+   rest are `3h` (5), `6h` (3), `12h` (1) and `2mn` (1). Their expected-sample count
+   per day differs, and `_estimate_year_indices` currently assumes hourly spacing for
+   all of them — a pre-existing slicing bug for those ten files, which this work
+   should either fix or exclude.
+
+## Then — monthly resolution, which is now the same job
 
 The large one, and mostly wall-clock rather than development time: it re-runs the
 fetch against NILU. It also fixes both known limitations, which is why they wait for
