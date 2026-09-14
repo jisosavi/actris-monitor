@@ -1,0 +1,9 @@
+# Test-only dependencies. Not installed in the container — the Dockerfile
+# installs requirements.txt alone.
+#
+#   ./.venv/bin/pip install -r backend/requirements-dev.txt
+#   cd backend && pytest
+#
+# anyio ships the pytest plugin the async tests use, and arrives via mcp.
+-r requirements.txt
+pytest==9.1.1

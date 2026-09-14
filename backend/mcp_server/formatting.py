@@ -7,25 +7,36 @@ paper. So each response carries its own provenance rather than relying on
 documentation the model never reads, and it never labels a value more precisely
 than the pipeline can support.
 
-Two conventions are deliberately not implemented yet, because nothing in v1 needs
-them and unused abstractions rot:
+Two conventions carry most of the weight:
 
-- **Truncation.** `truncated` is part of the wire contract from day one (see
-  `CoverageResult`), but the row-capping helper arrives with the first tool that
-  can actually overflow — `list_stations` or `get_series`. Never truncate silently:
-  the shape is `{"rows": [...], "truncated": true, "n_remaining": N, "hint": "..."}`.
-- **Teaching errors.** When a tool has no data for a request, return the recovery
-  path — `{"error": "no_data", "message": ..., "available_years": [...],
-  "suggestion": ...}` — rather than the bare `404 No data in database for
-  2024/absorption` that `/api/stations/{year}/{variable}` gives the dashboard.
-  Agents recover from the former and loop on the latter.
+- **Truncation is never silent.** A capped result says so, says how much is left,
+  and names the tool that answers the wide version of the question. `cap_groups`
+  below drops whole groups rather than trailing rows, because half a station's
+  periods invites exactly the wrong conclusion about a trend.
+- **Errors teach.** When a tool has no data for a request it returns the recovery
+  path — what *is* available and what to try next — rather than the bare
+  `404 No data in database for 2024/absorption` that
+  `/api/stations/{year}/{variable}` gives the dashboard. Agents recover from the
+  former and loop on the latter.
 """
 
 from __future__ import annotations
 
+import unicodedata
+from typing import TypeVar
+
 from pydantic import BaseModel, Field
 
 from variables import Variable
+
+T = TypeVar("T")
+
+# Ceiling on one get_series answer. 144 stations x 27 years is ~3,900 rows, and
+# even 20 x 30 would be ~54 KB — comparable to the whole station catalogue for a
+# single call, on top of get_coverage's 19.5 KB.
+MAX_SERIES_ROWS = 300
+MAX_SERIES_STATIONS = 10
+MAX_SERIES_PERIODS = 30
 
 SOURCE = "EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP"
 
@@ -110,6 +121,48 @@ def compress_years(years: list[int]) -> str:
         start = prev = year
     spans.append(str(start) if start == prev else f"{start}-{prev}")
     return ",".join(spans)
+
+
+def has_value(mean: float | None) -> bool:
+    """The project's definition of "this station-year has data".
+
+    `compute_annual_stats` treats a mean of zero or less as absent, and the
+    dashboard is drawn that way. The MCP tools apply the same rule so a station
+    that the map shows as empty is not reported here as measuring zero.
+    """
+    return mean is not None and mean > 0
+
+
+def fold(text: str) -> str:
+    """Casefold and strip diacritics, so `Hyytiala` finds `Hyytiälä`.
+
+    Station names in EBAS carry the local spelling — Hyytiälä, Ny-Ålesund,
+    Racibórz, Zürich — and nobody types those from an agent prompt.
+    """
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold().strip()
+
+
+def cap_groups(
+    groups: list[tuple[str, list[T]]], max_rows: int, max_groups: int
+) -> tuple[list[T], int]:
+    """Take whole groups until a row or group ceiling is reached.
+
+    Returns the kept rows and the number of groups left behind. Dropping whole
+    groups is the point: a station returned with only the first few of its periods
+    reads as a complete record, and a model will draw a trend through it.
+
+    A single group larger than `max_rows` is still returned whole — one station's
+    series is the smallest answer that is not misleading.
+    """
+    kept: list[T] = []
+    for index, (_, rows) in enumerate(groups):
+        if index >= max_groups:
+            return kept, len(groups) - index
+        if kept and len(kept) + len(rows) > max_rows:
+            return kept, len(groups) - index
+        kept.extend(rows)
+    return kept, 0
 
 
 def annual_period(year: int) -> tuple[str, str]:

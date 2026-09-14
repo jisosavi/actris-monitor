@@ -3,9 +3,12 @@
 Design plan for exposing ACTRIS Monitor's data to AI agents over the Model Context
 Protocol (MCP). Written 2026-09-10.
 
-**Status (2026-09-14):** live are the transport, **one tool of six**
-(`get_coverage`), **two resources** (`actris://catalog/stations`,
-`actris://citation`) and **one prompt** (`data_availability_briefing`) — see
+**Status (2026-09-14):** stages 1–3 are done. Live are the transport, **all six
+tools** — `get_coverage`, `find_station`, `get_series`, `get_ranking`,
+`get_network_stats`, `get_change` — **two resources** (`actris://catalog/stations`,
+`actris://citation`), **one prompt** (`data_availability_briefing`) and a test
+suite driving the tools through the SDK's in-process client. Remaining: stage 4
+(instrument backfill, then the two analysis prompts) and stage 5 (monthly). See
 `backend/mcp_server/`, the generated `docs/mcp-reference.md`, and the MCP section
 of `CLAUDE.md`. The v1 spike deliberately proved the mount, the Host allowlist, the
 rate limiter and the response conventions against a real client before writing five

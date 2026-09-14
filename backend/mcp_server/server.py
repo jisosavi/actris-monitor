@@ -32,7 +32,11 @@ Data is annual only: one mean per station, variable and calendar year. Requests 
 monthly or daily figures cannot be satisfied — say so rather than approximating.
 
 Call get_coverage first. Coverage is uneven across periods and variables, and a period \
-outside the matrix has no data rather than data worth retrying for.
+outside the matrix has no data rather than data worth retrying for. Station codes like \
+FI0050R are what every other tool takes; resolve names with find_station.
+
+The current year is normally empty — Level 2 publication lags by a year or two — so \
+never treat the latest period as "now".
 
 Every result carries a provenance block. Values are Level-2 QC'd, but the annual mean is \
 unweighted across a station's files and no result states what fraction of a period was \
@@ -71,6 +75,11 @@ def _register_resource(fn, *, uri: str, title: str, mime_type: str) -> None:
 
 
 _register_tool(tools.get_coverage, title="Data coverage")
+_register_tool(tools.find_station, title="Find a station")
+_register_tool(tools.get_series, title="Station time series")
+_register_tool(tools.get_ranking, title="Station ranking")
+_register_tool(tools.get_network_stats, title="Network statistics")
+_register_tool(tools.get_change, title="Change between periods")
 
 # Resources are addressed by URI, never by function name, and the SDK does not call
 # the function during resources/list — only when a client actually reads one.
