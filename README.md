@@ -71,7 +71,9 @@ For each station, variable and year, every Level 2 file whose date range covers 
 
 More importantly, those files are often not the same measurement. In 2019, 100 of 164 station-variable pairs were fed by more than one file, and 56 of them mixed different size cuts or matrices — Hyytiälä's 2019 scattering mean averages `pm1`, `pm10`, three no-cut files and an `aerosol_humidified` tandem nephelometer together. PM1 scattering excludes coarse particles and reads lower than PM10; humidified reads higher than dry.
 
-Two consequences worth knowing before using a number from here: comparing two stations may compare different measurands, and **a step between two years can come from a file appearing or disappearing rather than from the atmosphere**. Treat the values as a network overview, not as a record for a single site. The choice of a better rule is an open question — see [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
+Two consequences worth knowing before using a number from here: comparing two stations may compare different measurands, and **a step between two years can come from a file appearing or disappearing rather than from the atmosphere**. Treat the values as a network overview, not as a record for a single site.
+
+This is deliberate rather than an oversight: asked whether to prefer a canonical size cut or split the series, Antti Hyvärinen (FMI) advised keeping the calculation as it is. It is documented here because the caveats still hold, not because a fix is pending.
 
 ### Station metadata
 

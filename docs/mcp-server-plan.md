@@ -137,8 +137,10 @@ These matter more than the tool list.
 
    `provenance.mean_method` now says all of this, in every payload.
 
-Limitation 1 needs the re-fetch. Limitation 2 needs a **decision** first — see the
-roadmap below — and only then the re-fetch.
+Limitation 1 needs the re-fetch. Limitation 2 is **intended behaviour**, confirmed
+with Antti Hyvärinen (FMI) in September 2026 — "keep the calculation as it is now" —
+so it is documented rather than fixed, and the disclosure above is the mitigation
+rather than a stopgap.
 
 ## Tests
 
@@ -186,14 +188,31 @@ what the prompts need:
   statistics, with "no data" kept distinct from a genuine zero, and a note where the
   stations being compared do not share a size cut.
 
-**The decision this defers.** Whether a station-year should keep averaging every
-overlapping file, prefer one canonical matrix (dry PM10, say, falling back to
-no-cut), or report each matrix as its own series. That is a science call, it changes
-published numbers, and the third option changes the grain of `station_records` —
-which is exactly the change `station_series` already makes for monthly. So it
-belongs with the re-fetch below rather than costing a second one. Quantifying how
-much the choice moves the numbers is worth doing first, and needs no schema change:
-fetch per-file means for a handful of multi-file stations and compare.
+**The decision this deferred — now answered.** Whether a station-year should keep
+averaging every overlapping file, prefer one canonical matrix, or report each matrix
+as its own series was put to Antti Hyvärinen (FMI) in September 2026. The answer:
+**"Keep the calculation as it is now."**
+
+So the aggregation stays: every overlapping Level 2 file, per-file annual means,
+averaged unweighted. Three consequences:
+
+- **The re-fetch is no longer blocked on a science call.** Monthly can proceed
+  whenever it is worth the wall-clock.
+- **Disclosure is now the whole mitigation, not a stopgap.** The numbers are the
+  intended network-overview convention, but everything
+  `provenance.mean_method` says about them remains true — mixed measurands,
+  composition-driven steps. That text stays, and stays prominent.
+- **The composition backfill matters more, not less.** With the calculation fixed,
+  telling a reader *when the composition changed under it* is the only remaining way
+  to stop a file appearing in 2019 being read as an atmospheric trend.
+
+Two things the answer does not settle, worth a follow-up rather than an assumption:
+whether "as it is now" is meant to include the unweighted part once valid-sample
+counts exist (the re-fetch makes weighting possible for the first time), and whether
+it refers to averaging per *file* or per distinct *matrix* — Hyytiälä's 2019
+scattering draws on three no-cut files, so per-file averaging weights no-cut three
+times over. The current code averages per file; anything stored at a coarser grain
+would silently change the published number.
 
 ## Then — monthly resolution
 
@@ -224,11 +243,17 @@ CREATE TABLE station_series (
 );
 ```
 
-`matrix` in the key is the change limitation 2 forces. Keeping size cuts as separate
-rows is the only shape that lets a caller ask for one measurand, and it costs
-nothing extra here: the re-fetch already visits every file, so the per-file values
-are in hand at exactly the moment the rows are written. Collapsing to one row per
-period, as `station_records` does, is what created the problem.
+`matrix` in the key is **no longer required** by the aggregation — that stays as it
+is. It is worth keeping anyway, for a different reason: the re-fetch already visits
+every file, so the per-file detail is in hand at the exact moment the rows are
+written, and capturing it costs one pass rather than another whole re-fetch later.
+It buys the composition flag for trend reports, the option of showing the spread
+behind a mean, and the ability to revisit the question without going back to NILU.
+
+If it is kept, the published annual mean must still be computed **per file**, not
+per matrix row — Hyytiälä's 2019 scattering draws on three no-cut files, and
+collapsing those to one row before averaging would change the number that is
+currently published.
 
 `station_records` becomes the rows where `resolution='annual'`; the migration is an
 insert-select. And `_fetch_file_mean` must **return** the binned sub-annual array
