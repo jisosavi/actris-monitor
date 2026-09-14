@@ -5,17 +5,51 @@ import { MapboxOverlay } from '@deck.gl/mapbox'
 import { ScatterplotLayer } from '@deck.gl/layers'
 import { storeToRefs } from 'pinia'
 import { useStationsStore } from '@/stores/stations'
-import { useStationData, useFilteredStations } from '@/composables/useStationData'
-import type { Station } from '@/types'
+import { useStationData, useFilteredStations, useNrtStations } from '@/composables/useStationData'
+import StationDetail from '@/components/StationDetail.vue'
+import type { Station, NrtStation } from '@/types'
 
 const mapContainer = ref<HTMLDivElement | null>(null)
 const map = shallowRef<maplibregl.Map | null>(null)
 const overlay = shallowRef<MapboxOverlay | null>(null)
 
 const store = useStationsStore()
-const { rankingMode, hoveredStation, networkFilter } = storeToRefs(store)
+const { rankingMode, hoveredStation, networkFilter, selectedStationId } = storeToRefs(store)
 const { stationsQuery } = useStationData()
 const filteredStations = useFilteredStations()
+const { data: nrt } = useNrtStations()
+
+/** Station ids with live data — drives the badge on markers we already show. */
+const nrtIds = computed(() => new Set(Object.keys(nrt.value?.stations ?? {})))
+
+const hoveredHasNrt = computed(() =>
+  hoveredStation.value ? nrtIds.value.has(hoveredStation.value.id) : false,
+)
+
+/**
+ * Sites that report live data but appear nowhere in our own record.
+ *
+ * `known` comes from the backend, which compares against every station we hold in
+ * any year. Subtracting the *selected year's* stations here instead would draw our
+ * own stations as unknown sites whenever they have no data for that year — and in
+ * an empty year, the whole NRT network would appear as extra markers.
+ *
+ * They are drawn from a different dataset and must stay out of every aggregate —
+ * the ranking chart, the network statistics and the colour scale all read
+ * `filteredStations`, which these never enter.
+ */
+type NrtOnlyStation = NrtStation & { id: string }
+
+const nrtOnlyStations = computed<NrtOnlyStation[]>(() =>
+  Object.entries(nrt.value?.stations ?? {})
+    .filter(([, entry]) => !entry.known)
+    .map(([id, entry]) => ({ id, ...entry })),
+)
+
+function select(id: string | null) {
+  // Clicking the pinned station again, or the empty map, clears the panel.
+  store.selectedStationId = store.selectedStationId === id ? null : id
+}
 
 const elapsed = ref(0)
 const lastLoadTime = ref<number | null>(null)
@@ -76,7 +110,6 @@ function buildLayer(stations: Station[]) {
   const hi = Math.max(...values)
 
   const noData = stations.filter((s) => s.mean === null)
-  console.log('No-data stations:', noData.length, noData.map(s => s.id))
 
   // Hollow layer for stations with no data for the selected year
   const noDataLayer = new ScatterplotLayer<Station>({
@@ -95,6 +128,34 @@ function buildLayer(stations: Station[]) {
     pickable: true,
     onHover: ({ object }) => {
       store.hoveredStation = (object as Station) ?? null
+    },
+    onClick: ({ object }) => {
+      if (object) select((object as Station).id)
+      return true
+    },
+  })
+
+  // Live-data-only sites. Cyan is deliberately outside both colour scales
+  // (blue→amber→red for concentration, green→grey→red for change) and distinct
+  // from the grey hollow rings, so it reads as a different kind of thing rather
+  // than another state of the same thing.
+  const nrtOnlyLayer = new ScatterplotLayer<NrtOnlyStation>({
+    id: 'stations-nrt-only',
+    data: nrtOnlyStations.value,
+    getPosition: (d) => [d.lon, d.lat],
+    getRadius: 16000,
+    getFillColor: [14, 157, 184, 190],
+    getLineColor: [255, 255, 255, 220],
+    getLineWidth: 2400,
+    lineWidthMinPixels: 2,
+    radiusMinPixels: 5,
+    radiusMaxPixels: 11,
+    filled: true,
+    stroked: true,
+    pickable: true,
+    onClick: ({ object }) => {
+      if (object) select((object as NrtOnlyStation).id)
+      return true
     },
   })
 
@@ -127,6 +188,10 @@ function buildLayer(stations: Station[]) {
     onHover: ({ object }) => {
       store.hoveredStation = (object as Station) ?? null
     },
+    onClick: ({ object }) => {
+      if (object) select((object as Station).id)
+      return true
+    },
     updateTriggers: {
       getFillColor: [rankingMode.value, networkFilter.value.length],
       getLineColor: networkFilter.value.length,
@@ -134,7 +199,8 @@ function buildLayer(stations: Station[]) {
     },
   })
 
-  return [noDataLayer, dataLayer]
+  // NRT-only sites sit under our own markers: where a site is both, ours wins.
+  return [nrtOnlyLayer, noDataLayer, dataLayer]
 }
 
 function refresh(stations: Station[]) {
@@ -159,7 +225,15 @@ onMounted(() => {
   map.value.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
   map.value.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right')
 
-  overlay.value = new MapboxOverlay({ interleaved: false, layers: [] })
+  overlay.value = new MapboxOverlay({
+    interleaved: false,
+    layers: [],
+    // Fires only when no layer handled the click — a layer's onClick returns true
+    // and stops here — so this is the "clicked empty map" case.
+    onClick: (info) => {
+      if (!info.object) store.selectedStationId = null
+    },
+  })
   map.value.addControl(overlay.value as unknown as maplibregl.IControl)
 
   watch(
@@ -169,6 +243,12 @@ onMounted(() => {
   )
 
   watch(rankingMode, () => {
+    refresh(filteredStations.value ?? [])
+  })
+
+  // The NRT query resolves after the first render, so the layers have to be
+  // rebuilt when it lands or the live-data markers never appear.
+  watch(nrtOnlyStations, () => {
     refresh(filteredStations.value ?? [])
   })
 })
@@ -184,9 +264,12 @@ onUnmounted(() => {
   <div class="map-wrap">
     <div ref="mapContainer" class="map-canvas" />
 
+    <!-- Pinned station details. Takes the tooltip's corner, so the tooltip yields. -->
+    <StationDetail />
+
     <!-- Hover tooltip -->
     <Transition name="fade">
-      <div v-if="hoveredStation" class="tooltip">
+      <div v-if="hoveredStation && !selectedStationId" class="tooltip">
         <div class="tooltip-name">
           {{ hoveredStation.name && hoveredStation.name !== hoveredStation.id
             ? `${hoveredStation.name} / ${hoveredStation.id}`
@@ -222,6 +305,9 @@ onUnmounted(() => {
         <div v-if="hoveredStation.mean !== null" class="tooltip-coverage">
           Coverage {{ (hoveredStation.data_coverage * 100).toFixed(0) }}%
         </div>
+        <div v-if="hoveredHasNrt" class="tooltip-live">
+          <span class="tooltip-live-dot" />LIVE data — click to open
+        </div>
       </div>
     </Transition>
 
@@ -236,6 +322,9 @@ onUnmounted(() => {
         <span v-else style="color: var(--positive)">Decrease</span>
         <span v-if="rankingMode === 'concentration'">High</span>
         <span v-else style="color: var(--negative)">Increase</span>
+      </div>
+      <div v-if="nrtOnlyStations.length" class="legend-nrt">
+        <span class="legend-nrt-dot" />Live data only
       </div>
       <div v-if="dataTimestamp" class="legend-timestamp">Updated {{ dataTimestamp }}</div>
     </div>
@@ -304,6 +393,34 @@ onUnmounted(() => {
 .tooltip-nodata { font-size: 11px; color: var(--text-muted); margin-top: 4px; font-style: italic; }
 .tooltip-unknown-net { font-size: 10px; color: var(--text-muted); margin-top: 6px; font-style: italic; }
 .tooltip-coverage { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+.tooltip-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #0b7f96;
+}
+.tooltip-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #0e9db8; }
+
+.legend-nrt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.legend-nrt-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #0e9db8;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(14, 157, 184, 0.35);
+  flex-shrink: 0;
+}
 
 .legend {
   position: absolute;

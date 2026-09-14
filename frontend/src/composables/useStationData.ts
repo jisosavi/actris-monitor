@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { storeToRefs } from 'pinia'
 import axios from 'axios'
 import { useStationsStore } from '@/stores/stations'
-import type { Station, NetworkStats } from '@/types'
+import type { Station, NetworkStats, NrtAvailability } from '@/types'
 
 
 export interface WarmupStatus {
@@ -192,6 +192,24 @@ export function useCheckNewYear() {
     queryFn: () => api.get<NewYearStatus>('/check-new-year').then((r) => r.data),
     staleTime: 1000 * 60 * 10,
     enabled: false, // only fetch when explicitly triggered
+  })
+}
+
+/**
+ * Which stations have EBAS near-real-time data.
+ *
+ * Goes through our backend rather than ebas-nrt.nilu.no directly: that service
+ * sends no CORS headers, so the browser cannot read it. The backend caches for an
+ * hour and fails soft, so this query is cheap and never errors in practice — a
+ * bad upstream simply returns an empty `stations` map with `stale: true`, and the
+ * map shows no badges.
+ */
+export function useNrtStations() {
+  return useQuery<NrtAvailability>({
+    queryKey: ['nrt-stations'],
+    queryFn: () => api.get<NrtAvailability>('/nrt/stations').then((r) => r.data),
+    staleTime: 1000 * 60 * 60,
+    retry: false,
   })
 }
 
