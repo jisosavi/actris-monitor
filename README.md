@@ -87,13 +87,21 @@ https://actris-monitor-production.up.railway.app/mcp
 
 **Please cite the data.** Every tool response carries a `provenance` block naming EBAS/ACTRIS and the citation expectation. The measurements are contributed by station principal investigators; acknowledge them and EBAS/ACTRIS in any published use.
 
-One tool exists today, `get_coverage`, which returns the period × variable availability matrix and each variable's definition. The full reference is in [docs/mcp-reference.md](docs/mcp-reference.md) (generated from the server, so it cannot drift from what the agent is told); seven more tools are designed in [docs/mcp-server-plan.md](docs/mcp-server-plan.md). Two caveats the responses state explicitly and any consumer should repeat: means are unweighted across a station's files within a year, and no figure says what fraction of a period was actually observed.
+**What's there today** — one tool, two resources and one prompt:
+
+- `get_coverage` — the period × variable availability matrix plus each variable's definition. The model calls this itself.
+- `actris://catalog/stations` — all 144 stations with coordinates, networks and per-variable coverage; `actris://citation` — attribution to paste into a manuscript. Resources are *attached by you*, from the composer's connector menu.
+- **Data availability briefing** — a prompt you pick from that same menu; it reports what exists, names the gaps, and repeats the caveats.
+
+The full reference, including the instructions the model receives, is in [docs/mcp-reference.md](docs/mcp-reference.md) — generated from the server, so it cannot drift from what the agent is actually told. Five more tools are designed in [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
+
+Two caveats the responses state explicitly and any consumer should repeat: means are unweighted across a station's files within a year, and no figure says what fraction of a period was actually observed.
 
 ## Technical Stack
 
 **Frontend** — Vue 3, TypeScript, Pinia, TanStack Vue Query, MapLibre GL, deck.gl, Apache ECharts, shadcn-vue (Radix UI), Tailwind CSS, Vite
 
-**Backend** — FastAPI, uvicorn, httpx, aiosqlite, NumPy
+**Backend** — FastAPI, uvicorn, httpx, aiosqlite, NumPy, pandas, MCP Python SDK (`mcp`)
 
 **Database** — SQLite (WAL mode) via aiosqlite
 
@@ -102,10 +110,11 @@ One tool exists today, `get_coverage`, which returns the period × variable avai
 ## Running Locally
 
 ```bash
-# Backend
+# Backend — DATABASE_PATH must be set when running natively: the code default is
+# /data/actris.db, which is not writable on macOS (it is the container's volume path).
 cd backend
 pip install -r requirements.txt
-python main.py
+DATABASE_PATH=./data/actris.db python main.py
 # Runs on localhost:8000
 
 # Frontend
@@ -127,7 +136,17 @@ The database file defaults to `/data/actris.db` and can be overridden with the `
 
 ## Deployment
 
-The backend is deployed on Railway (auto-deploys on push to `main`). The frontend is built with `npm run build` and served as static files. The `ALLOWED_ORIGIN` environment variable controls CORS (comma-separated list or `*`).
+The backend is deployed on Railway (auto-deploys on push to `main`). The frontend is built with `npm run build` and served as static files.
+
+Environment variables that matter in production (all documented in `backend/.env.example`):
+
+| Variable | Why |
+|---|---|
+| `ALLOWED_ORIGIN` | CORS allowlist — comma-separated, or `*`. Should be the real frontend origin |
+| `ADMIN_TOKEN` | Guards the three mutating endpoints. **Fails closed**: unset means they return 503 |
+| `MCP_ALLOWED_HOSTS` | **Required, or `/mcp` returns `421` to everything.** The MCP SDK arms DNS-rebinding protection with a localhost-only allowlist by default, and the rejection is logged server-side and reported nowhere else. Set it to the deployed hostname |
+| `MCP_RATE_LIMIT_PER_MINUTE`, `MCP_MAX_CONCURRENT` | Defaults 60 and 8. Per-process counters, so replicas multiply the effective limit |
+| `DATABASE_PATH` | Defaults to `/data/actris.db`, the mounted volume |
 
 ## Live Demo
 

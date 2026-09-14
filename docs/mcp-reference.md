@@ -16,6 +16,18 @@ Regenerate with:
 cd backend && python scripts/dump_mcp_tools.py
 ```
 
+## Server instructions
+
+Returned in the `server/discover` result and put in front of the model once per connection, before any tool is called. Defined as `INSTRUCTIONS` in `backend/mcp_server/server.py`.
+
+> Annual-mean in-situ aerosol measurements from the EBAS/ACTRIS network, served from a local database (no upstream fetches happen during a tool call).
+>
+> Data is annual only: one mean per station, variable and calendar year. Requests for monthly or daily figures cannot be satisfied — say so rather than approximating.
+>
+> Call get_coverage first. Coverage is uneven across periods and variables, and a period outside the matrix has no data rather than data worth retrying for.
+>
+> Every result carries a provenance block. Values are Level-2 QC'd, but the annual mean is unweighted across a station's files and no result states what fraction of a period was actually observed. Repeat those caveats when reporting numbers, and carry the citation into any published use.
+
 ## Tools
 
 Verbs the *model* calls.

@@ -36,6 +36,7 @@ frontend/src/
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
 docs/mcp-server-plan.md          MCP design plan + roadmap (what is not built yet)
 docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
+docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 ```
 
 ## Things that are easy to get wrong
@@ -96,7 +97,9 @@ that or add retry loops without a good reason.
 
 Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak
 Streamable HTTP. `backend/mcp_server/` holds it and `docs/mcp-server-plan.md` has
-the design and the roadmap — one of the eight planned tools (`get_coverage`) exists.
+the design and the roadmap. Live today: **one tool of six** (`get_coverage`), **two
+resources** (`actris://catalog/stations`, `actris://citation`) and **one prompt**
+(`data_availability_briefing`).
 
 **`docs/mcp-reference.md` is generated — never edit it by hand.** After adding or
 changing a tool, run `cd backend && python scripts/dump_mcp_tools.py`.
@@ -104,7 +107,7 @@ changing a tool, run `cd backend && python scripts/dump_mcp_tools.py`.
 the description the model reads, so a hand-written second copy could disagree with
 the agent's own instructions and nothing would notice.
 
-Four things that break it, all of them silently:
+Five things that break it, all of them silently:
 
 **The mount must stay at the bottom of `main.py`.** It is mounted at `/` so the
 endpoint path is exactly `/mcp`, and Starlette tries routes in order — a root mount
@@ -127,6 +130,16 @@ server log. A bare hostname automatically also allows `<host>:*`.
 module-global connection without closing the old one *and* flips every
 `status='running'` fetch job to `'failed'`. The tools rely on the lifespan having
 done it once.
+
+**A new tool, resource or prompt is invisible to already-connected clients.** The
+server advertises `listChanged: true` on all three surfaces, but that promises a
+*push*, and the stateless 2026-07-28 transport has no server-to-client channel to
+push down — there is no session to notify. A client discovers the surface once, via
+`server/discover`, when its connection is established: adding the connector, app
+launch, toggling it off and on, or reconnecting after a network drop. Opening a new
+conversation re-probes nothing. So after deploying a new tool, **reconnect the
+connector** — otherwise you will be looking for something the client has no way to
+know exists.
 
 Two design rules worth keeping: `mcp_server/tools.py` imports `database` and
 `variables` only — never FastAPI, never `main` — which is what would make a

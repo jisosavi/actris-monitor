@@ -3,12 +3,18 @@
 Design plan for exposing ACTRIS Monitor's data to AI agents over the Model Context
 Protocol (MCP). Written 2026-09-10.
 
-**Status:** the transport is built and one tool of the eight (`get_coverage`) is
-live — see `backend/mcp_server/` and the MCP section of `CLAUDE.md`. The v1 spike
-deliberately proved the mount, the Host allowlist, the rate limiter and the
-response conventions against a real client before writing seven more tools against
-guesses. Everything below still describes the target; the notes marked
-**implemented** or **superseded** record where reality has moved.
+**Status (2026-09-14):** live are the transport, **one tool of six**
+(`get_coverage`), **two resources** (`actris://catalog/stations`,
+`actris://citation`) and **one prompt** (`data_availability_briefing`) — see
+`backend/mcp_server/`, the generated `docs/mcp-reference.md`, and the MCP section
+of `CLAUDE.md`. The v1 spike deliberately proved the mount, the Host allowlist, the
+rate limiter and the response conventions against a real client before writing five
+more tools against guesses.
+
+Everything below still describes the target; notes marked **implemented**,
+**superseded** or **dropped** record where reality has moved. Where this document
+and `## Implementation order` disagree, that section wins — it is the newer
+decision.
 
 ## Decisions already made
 
@@ -100,27 +106,33 @@ This plan was written against the v1 API. Four corrections:
 `backfill_networks` as tools. Agents retry on ambiguity and a retried reset is
 unrecoverable. Those stay on the authenticated REST side for admin use.
 
-### Pre-populate
+### Pre-populate — **done**
 
-Because the DB is now shared across agents, fill it completely — all years, all
-three variables — so no agent request can trigger a fetch job. Fetch-on-demand
-latency is acceptable in a dashboard where the user chose to press the button; it
-is not acceptable inside a tool call.
+Because the DB is shared across agents, it had to be filled completely so that no
+agent request could trigger a fetch job. Fetch-on-demand latency is acceptable in a
+dashboard where the user chose to press the button; it is not acceptable inside a
+tool call.
+
+Production holds all of it: **81 (year, variable) pairs — all three variables,
+2000–2026, 144 stations** (verified 2026-09-11). 2026 is present with
+`n_stations: 0`, because no Level-2 data is published for the current year yet —
+which is the pipeline being honest, not a gap.
 
 ## Tool surface (v1)
 
-Eight tools. None are named or shaped around "annual" — resolution is a parameter
-and periods are ISO dates, so monthly slots in without breaking anything.
+Originally eight tools, **now six** — see `## Implementation order` for the two that
+were cut and why. None are named or shaped around "annual": resolution is a
+parameter and periods are ISO dates, so monthly slots in without breaking anything.
 
 | Tool | Purpose |
 |---|---|
-| `find_station(query, limit)` | Fuzzy resolution: "Hyytiälä", "SMEAR II", "Finnish forest site" → `FI0050R`. Returns candidates with code, name, country, networks, and which variables/years they cover. |
-| `list_stations(country?, network?, bbox?, has_data_for?)` | Filtered catalog browse, compact rows. |
-| `list_variables()` | Key, label, unit, instrument, wavelength, QC level. |
+| `find_station(query?, country?, network?, has_data_for?, limit)` | Fuzzy resolution: "Hyytiälä", "SMEAR II", "Finnish forest site" → `FI0050R`. Returns candidates with code, name, country, networks, and which variables/years they cover. **Absorbed `list_stations`**: a blank query with filters is a browse. |
+| ~~`list_stations(...)`~~ | **Merged into `find_station`.** |
+| ~~`list_variables()`~~ | **Dropped.** Every `get_coverage` response already carries the variable definitions, and so does the catalogue resource. |
 | `get_series(stations[], variables[], start, end, resolution)` | The workhorse. `resolution` enum is `["annual"]` in v1, gains `"monthly"` in v2. |
 | `get_ranking(period, variable, network?, country?, limit)` | Highest-to-lowest — the ranking chart as data. |
 | `get_network_stats(period_range, variable, network?)` | median / q1 / q3 / min / max / n_stations. |
-| `get_change(variable, from_period, to_period, scope)` | Computed deltas, absolute and %, rankable. Its own tool because "which stations declined most 2005→2020" across ~200 stations is where agents fumble doing arithmetic by hand. |
+| `get_change(variable, from_period, to_period, scope)` | Computed deltas, absolute and %, rankable. Its own tool because "which stations declined most 2005→2020" across 144 stations is where agents fumble doing arithmetic by hand. |
 | `get_coverage()` | **Implemented.** The period × variable availability matrix, so an agent can check instead of discovering gaps through failures. Also returns each variable's definition (unit, instrument, wavelength, QC level) so values can be described without a second call. |
 
 `find_station` is the highest-value tool in the list. Agents never say `FI0050R`.
@@ -430,14 +442,14 @@ into someone's paper. That raises the bar:
 
 ## Phasing
 
-- **v1 spike — transport + one tool: done.** Mount, Host allowlist, rate limiter and
-  the response conventions, verified against a real MCP client.
-- **v1 remainder — the other seven tools, then pre-population.** `find_station`
-  first: agents never say `FI0050R`, so without fuzzy resolution most sessions open
-  with a failed call. It needs an index — `idx_sr_lookup` leads with `year`, so a
-  lookup by `station_id` alone is a full scan today.
-- **v1 — annual, remote, authed:** ~3–5 days including hardening and
-  pre-population.
+**The phase list lives in `## Implementation order` above** — it superseded the
+estimates that used to sit here, which had drifted into contradicting both the tool
+count and the auth decision. What remains true of the original estimate:
+
+- **v1 — annual, remote:** the transport, the response conventions and
+  pre-population are done; the five remaining tools are the bulk of what is left.
+  (The original estimate said "authed" — superseded; the endpoint is open and
+  rate-limited, see `## Auth and hardening`.)
 - **v2 — monthly:** ~1 week, mostly wall-clock time re-running the fetch job
   against NILU rather than development time.
 

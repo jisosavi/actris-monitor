@@ -157,6 +157,21 @@ def render_tool(tool: Any) -> list[str]:
 async def build() -> str:
     lines = [PREAMBLE]
 
+    # The instructions are the only model-facing text that is not attached to a
+    # tool, resource or prompt — and the first thing a client receives. Leaving
+    # them out made this reference incomplete in exactly the way it claims not to be.
+    if instructions := (mcp.instructions or "").strip():
+        lines += [
+            "## Server instructions",
+            "",
+            "Returned in the `server/discover` result and put in front of the model once "
+            "per connection, before any tool is called. Defined as `INSTRUCTIONS` in "
+            "`backend/mcp_server/server.py`.",
+            "",
+        ]
+        lines += [f"> {line}" if line else ">" for line in instructions.splitlines()]
+        lines.append("")
+
     tools = sorted(await mcp.list_tools(), key=lambda t: t.name)
     lines += ["## Tools", "", "Verbs the *model* calls.", ""]
     # No count of what's *missing* — a hardcoded "seven more" is exactly the kind of
