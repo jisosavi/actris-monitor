@@ -20,16 +20,11 @@ Wavelengths are the values the fetch targets (`backend/variables.py`); selection
 
 ## Screenshots
 
-> **These predate the current interface.** They were taken before near-real-time
-> links were added, so they show neither the station detail panel that opens on
-> click, nor the live-data markers and badges, and the variable labels still read
-> 550 nm rather than 525/520 nm. To be retaken.
-
-![Map view showing station concentrations with network filter and hover tooltip](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
-*Main map view — station concentrations for 2011 N variable, all three network filters active, Pallas (Sammaltunturi) tooltip open*
+![Map view with the Pallas station detail panel open, showing its annual mean and a link to near-real-time data](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
+*Main map view — 2025 particle number concentration, with Pallas (Sammaltunturi) pinned. The panel shows the Level 2 annual mean and year-on-year change, then the live-data section linking through to EBAS near-real-time with its Level 1.5 caveat. Small cyan markers are sites that report live data but have no Level 2 record here.*
 
 ![Data Setup panel for fetching and managing measurement data](docs/Actris%20Monitor%20-%20Data%20Setup%20View.jpg)
-*Data Setup panel — year range selection, per-variable refresh, network metadata backfill*
+*Data Setup panel — admin token, year range and variable selection, per-variable refresh, and network metadata backfill. Viewing the dashboard needs no token; only data management does.*
 
 ## Interface
 
