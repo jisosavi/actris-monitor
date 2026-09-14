@@ -126,6 +126,61 @@ and periods are ISO dates, so monthly slots in without breaking anything.
 `find_station` is the highest-value tool in the list. Agents never say `FI0050R`.
 Without fuzzy resolution, most sessions open with a failed call.
 
+## Implementation order (decided 2026-09-14)
+
+**The surface is six tools, not eight.** Two were cut once the catalogue resource
+existed:
+
+- `list_variables` — **dropped.** Every `get_coverage` response already carries the
+  full variables block, and so does the catalogue resource. A third copy is a third
+  thing to keep in sync.
+- `list_stations` — **merged into `find_station`**, which becomes
+  `find_station(query?, country?, network?, has_data_for?, limit)`. A blank query
+  with filters is a browse; a query with filters is a search. One implementation,
+  and one fewer choice for a model to get wrong.
+
+**A correction to this document's earlier claim.** It said `get_series` needs three
+things the schema lacks. In fact they split three ways, and only one is blocking:
+
+- *Gap markers* need no schema change — emit every period in range with
+  `mean: null` rather than omitting it. A model that sees 2007 missing concludes
+  nothing; one that sees `2007: null` knows.
+- *Instrument per period* is not stored, but needs **no re-fetch**: `_parse_catalog`
+  already decodes it from the THREDDS filename, so a backfill can populate it from
+  catalog metadata alone, exactly like `backfill_networks`.
+- *Valid-sample counts* genuinely need the re-fetch, because `_compute_annual_mean`
+  discards `valid.size`. They ride along with the monthly work.
+
+### Phases
+
+1. **Make stations addressable.** Migration adding an index on
+   `station_records(station_id)` — `idx_sr_lookup` leads with `year`, so every
+   lookup by station code is a full scan today — then `find_station`, which reuses
+   `get_station_catalog()` and filters 144 stations in Python rather than adding SQL.
+   Stations whose coverage is empty must come back flagged, not filtered out:
+   Vielsalm is real, and an agent that cannot see it will report it does not exist.
+2. **`get_series`.** Long rows, one per (station, variable, period), capped at
+   roughly 20 stations × 30 periods — 144 × 27 is ~3,900 rows, so this is where
+   `formatting.py`'s deferred `cap()` helper gets written, with `truncated`,
+   `n_remaining` and a `hint` naming `get_ranking` or `get_change` for wide
+   questions.
+3. **The aggregate three together** — `get_network_stats` (reads `network_stats`
+   directly, nearly free), `get_ranking`, `get_change`. Built in one sitting so
+   `n_stations` means the same thing in all three and all three distinguish "no
+   data" from a genuine zero, which 2026 makes live right now. `get_change` must
+   report stations present in one period but not the other as changed-unknown rather
+   than dropping them.
+4. **Instrument backfill, then the prompts.** An admin endpoint mirroring
+   `backfill_networks`, reading only the cached catalog. Then `station_trend_report`
+   and `network_comparison`, which need the instrument to flag the mid-record
+   instrument change that most often invalidates a trend.
+5. **Deferred to the monthly work** — valid-sample counts, real coverage fractions,
+   weighted means, the `station_series` table. All need the re-fetch, so they ride
+   along rather than costing a separate one.
+
+Each phase regenerates `docs/mcp-reference.md` and is accepted against a real
+client, not against a 200 from curl.
+
 ## Response conventions
 
 Cross-cutting rules for every tool. These matter more than the tool list.
