@@ -20,6 +20,11 @@ Wavelengths are the values the fetch targets (`backend/variables.py`); selection
 
 ## Screenshots
 
+> **These predate the current interface.** They were taken before near-real-time
+> links were added, so they show neither the station detail panel that opens on
+> click, nor the live-data markers and badges, and the variable labels still read
+> 550 nm rather than 525/520 nm. To be retaken.
+
 ![Map view showing station concentrations with network filter and hover tooltip](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
 *Main map view — station concentrations for 2011 N variable, all three network filters active, Pallas (Sammaltunturi) tooltip open*
 
@@ -37,7 +42,15 @@ A control panel provides:
 
 A station ranking chart lists all stations from highest to lowest concentration. Network statistics cards show median, IQR, minimum, and maximum — each with a year-on-year percentage and absolute change indicator.
 
-Hovering a station shows a tooltip with the station name, country, annual mean, year-on-year change, and data coverage.
+Hovering a station shows a tooltip with the station name, country, annual mean, year-on-year change, and data coverage. Clicking one pins it and opens a detail panel, which stays until you close it or click elsewhere.
+
+### Near-real-time links
+
+EBAS publishes [near-real-time data](https://ebas-nrt.nilu.no) for part of the network. Where a station has live measurements for one of the three variables, its tooltip shows a **LIVE** chip and the detail panel links straight through to that station's page at NILU. 23 of the stations on the map currently qualify.
+
+A further 7 sites report live data but have no Level 2 annual record here at all; they appear as separate cyan markers, noted in the legend, and take no part in the ranking chart, the network statistics or the colour scale — they are annotations from a different dataset that happens to share a map.
+
+The dashboard links to that data rather than plotting it. NRT is Level 1.5 — preliminary, not quality-assured — while everything else here is Level 2, and the panel says so.
 
 ## Data Setup
 
@@ -68,6 +81,8 @@ For backfill, one file per unique instrument type per station is processed (up t
 All fetched data is persisted in a **SQLite database** (WAL mode, aiosqlite). Fetch jobs run as background asyncio tasks with per-combination progress tracking stored in the database.
 
 The pydap library is not used. All OPeNDAP access goes through httpx against the ASCII endpoint, as pydap/webob returns HTTP 503 from the NILU THREDDS server.
+
+`backend/nrt.py` asks the EBAS near-real-time service which stations currently publish live data, caches the answer for an hour, and fails soft — an outage serves the last good snapshot, or an empty one, never an error, so the dashboard renders normally with no badges. It exists in the backend rather than the browser because that service sends no CORS headers, which makes it unreachable from the frontend.
 
 ### Frontend
 
@@ -128,6 +143,13 @@ Or with Docker Compose:
 
 ```bash
 docker compose up
+```
+
+Tests cover the MCP tools, driven through the protocol's in-process client — no server, no port:
+
+```bash
+pip install -r backend/requirements-dev.txt
+cd backend && pytest
 ```
 
 On first run, open the app and use **Data Setup** to fetch measurement data from NILU servers. A fetch of 5 years × 3 variables typically takes a few minutes.
