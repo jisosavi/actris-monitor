@@ -111,11 +111,34 @@ These matter more than the tool list.
    `1.0 if values else 0.0`. The MCP layer never emits it, and every
    `provenance.coverage_basis` says coverage is presence only. A station with two
    months of data is indistinguishable from one with twelve.
-2. **Unweighted mean of means** — multi-file stations use `np.mean(values)` over
-   per-file means with no weighting by sample count. `provenance.mean_method` says
-   so in every payload.
+2. **A station-year's mean can combine different measurands.** This is the serious
+   one, and it is worse than the "unweighted mean of means" it was first recorded
+   as. `fetch_measurements` selects every lev2 file whose date range overlaps the
+   year and averages their per-file annual means with equal weight. Measured against
+   the THREDDS catalog for **2019**:
 
-Both need the re-fetch, so both are fixed by the monthly work below.
+   | | |
+   |---|---|
+   | Station-variable pairs fed by more than one file | **100 of 164** |
+   | …mixing different size cuts or matrices | **56** |
+   | …mixing different instrument ids | **80** |
+
+   Hyytiälä's 2019 scattering mean averages **seven** files: `pm1`, `pm10`, three
+   no-cut, and an `aerosol_humidified` tandem nephelometer. PM1 scattering excludes
+   coarse particles and is systematically lower than PM10; the humidified channel is
+   systematically higher than dry. Those are different quantities, not repeat
+   measurements of one. IT0004R absorption in 2019 averages 16 files across 2
+   matrices; FI0050R absorption, 14 across 4.
+
+   Two consequences worth stating plainly. Cross-station comparison — what
+   `get_ranking` and `get_change` are for — may compare a PM10 station against a PM1
+   one. And **a year-to-year step can be produced purely by a file appearing or
+   disappearing**, which is precisely the artefact a trend report exists to catch.
+
+   `provenance.mean_method` now says all of this, in every payload.
+
+Limitation 1 needs the re-fetch. Limitation 2 needs a **decision** first — see the
+roadmap below — and only then the re-fetch.
 
 ## Tests
 
@@ -129,30 +152,56 @@ provenance on every tool.
 
 # Roadmap
 
-## Next — instrument backfill, then the analysis prompts
+## Next — file composition, then the analysis prompts
 
-An admin endpoint mirroring `backfill_networks`, reading only the cached THREDDS
-catalog: the instrument is already decoded from the filename by `_parse_catalog`,
-so this needs **no re-fetch**, just a column on `station_records` and a pass over
-the catalog.
+This step was originally written as "backfill the instrument, then the prompts".
+Checking it before building found the premise wrong and the underlying problem
+bigger, so it has been rewritten.
 
-Then the two prompts that need it:
+**What was wrong.** `_parse_catalog` reads field `[3]` of the filename, which is the
+instrument *class* — `nephelometer`, `cpc`, `filter_absorption_photometer`. That is
+what `INSTRUMENT_MAP` selects on, so it is identical on every file for a variable by
+construction. Backfilling it would write the same word on every row and never detect
+a change. The field that identifies the instrument is `[8]`
+(`FI03L_TSI_3563_SMR_pm10`, `SE02L_Aurora_3000_HYY_ref+Aurora_3000_HYY_wet`), and
+the size cut is `[5]`. Both are in the filename convention already documented at the
+top of `ebas_thredds.py`; neither is parsed today.
+
+**The step, restated.** Backfill the *composition* of each station-year from the
+cached catalog — file count, the set of matrices, the set of instrument ids, per
+(station, year, variable). Still no re-fetch, still an admin endpoint mirroring
+`backfill_networks`. It does not fix limitation 2; it makes it **visible**, which is
+what the prompts need:
 
 - `station_trend_report(station, variable, from_period, to_period)` — resolve the
   station, check coverage, fetch the series, then report against a fixed checklist:
   unit and wavelength from provenance rather than memory; how many requested periods
   actually have data, with the gaps named; no use of the word "trend" below a
-  minimum number of periods; a "low" year may be two months of winter; **an
-  instrument change between endpoints, which alone can move the number**; the
-  citation.
+  minimum number of periods; a "low" year may be two months of winter; the citation.
+  And the one this step unlocks: **if the file composition differs between the
+  endpoints — a size cut gained, an instrument swapped — say so and refuse to
+  attribute the change to the atmosphere.** A trend report over composition artefacts
+  is worse than no trend report, because it lends them authority.
 - `network_comparison(variable, period, network?)` — ranking plus network
-  statistics, with "no data" kept distinct from a genuine zero.
+  statistics, with "no data" kept distinct from a genuine zero, and a note where the
+  stations being compared do not share a size cut.
+
+**The decision this defers.** Whether a station-year should keep averaging every
+overlapping file, prefer one canonical matrix (dry PM10, say, falling back to
+no-cut), or report each matrix as its own series. That is a science call, it changes
+published numbers, and the third option changes the grain of `station_records` —
+which is exactly the change `station_series` already makes for monthly. So it
+belongs with the re-fetch below rather than costing a second one. Quantifying how
+much the choice moves the numbers is worth doing first, and needs no schema change:
+fetch per-file means for a handful of multi-file stations and compare.
 
 ## Then — monthly resolution
 
 The large one, and mostly wall-clock rather than development time: it re-runs the
-fetch against NILU. It also fixes both known limitations, which is why they wait
-for it.
+fetch against NILU. It also fixes both known limitations, which is why they wait for
+it — and why the composition decision above should be made before it starts, not
+after. The re-fetch is the expensive event; everything that needs one should ride
+the same pass.
 
 Four things are already in place so this stays additive: `resolution` is an enum
 parameter, every response carries ISO `period_start`/`period_end` rather than a bare
@@ -167,12 +216,19 @@ CREATE TABLE station_series (
     variable     TEXT    NOT NULL,
     period_start TEXT    NOT NULL,   -- ISO date
     resolution   TEXT    NOT NULL,   -- 'annual' | 'monthly'
+    matrix       TEXT    NOT NULL,   -- 'pm10' | 'pm1' | '' | 'aerosol_humidified' …
     mean         REAL,
     n_valid      INTEGER,
     coverage     REAL,
-    PRIMARY KEY (station_id, variable, period_start, resolution)
+    PRIMARY KEY (station_id, variable, period_start, resolution, matrix)
 );
 ```
+
+`matrix` in the key is the change limitation 2 forces. Keeping size cuts as separate
+rows is the only shape that lets a caller ask for one measurand, and it costs
+nothing extra here: the re-fetch already visits every file, so the per-file values
+are in hand at exactly the moment the rows are written. Collapsing to one row per
+period, as `station_records` does, is what created the problem.
 
 `station_records` becomes the rows where `resolution='annual'`; the migration is an
 insert-select. And `_fetch_file_mean` must **return** the binned sub-annual array

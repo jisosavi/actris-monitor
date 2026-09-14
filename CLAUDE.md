@@ -61,8 +61,17 @@ it is the reason the app is usable.
 **Known data-quality caveats** (documented, not yet fixed — see the plan doc):
 - `data_coverage` is set to `1.0 if values else 0.0`. It is a has-data flag, not
   a coverage fraction, despite the name.
-- Stations with several files in a year use `np.mean(values)`: an unweighted mean
-  of per-file means.
+- **A station-year's mean can mix different measurands.** `fetch_measurements`
+  averages every lev2 file overlapping the year, unweighted — and in 2019 that was
+  more than one file for 100 of 164 station-variable pairs, mixing size cuts for 56
+  of them. Hyytiälä's 2019 scattering averages pm1, pm10 and a humidified tandem
+  nephelometer together. A year-to-year step can therefore come from a file
+  appearing rather than from the atmosphere. Disclosed in every MCP payload via
+  `provenance.mean_method`; the fix needs a decision and a re-fetch, see the plan
+  doc.
+- The filename's field `[3]` is the instrument *class* and never varies within a
+  variable — `INSTRUMENT_MAP` selects on it. The instrument id is field `[8]` and
+  the size cut is `[5]`; neither is parsed today.
 - ~~`TARGET_WAVELENGTH` vs the 550 nm labels~~ — resolved: the constants (525 nm
   scattering, 520 nm absorption) were right and the labels were wrong. Both now
   come from `variables.py`, which is the single definition of a variable's label,

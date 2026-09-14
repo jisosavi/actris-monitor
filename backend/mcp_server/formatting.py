@@ -49,9 +49,13 @@ CITATION = (
 # Why these two strings exist, in the payload rather than in a docstring: an agent
 # cites only what is in the tool result.
 MEAN_METHOD = (
-    "Annual mean of hourly values > 0. Stations with several files in a year use an "
-    "unweighted mean of per-file annual means, so a file covering one month counts as "
-    "much as one covering twelve. Treat cross-station comparisons as indicative."
+    "Annual mean of hourly values > 0. Where a station has several files for a year — "
+    "usually it does — their per-file annual means are averaged unweighted, so a file "
+    "covering one month counts as much as one covering twelve. Those files may also "
+    "differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: "
+    "different measurands, not repeat measurements of one. So treat cross-station "
+    "comparisons as indicative, and note that a step between two years can come from a "
+    "change in which files exist rather than from the atmosphere."
 )
 
 COVERAGE_BASIS = (
