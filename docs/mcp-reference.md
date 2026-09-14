@@ -24,7 +24,9 @@ Returned in the `server/discover` result and put in front of the model once per 
 >
 > Data is annual only: one mean per station, variable and calendar year. Requests for monthly or daily figures cannot be satisfied — say so rather than approximating.
 >
-> Call get_coverage first. Coverage is uneven across periods and variables, and a period outside the matrix has no data rather than data worth retrying for.
+> Call get_coverage first. Coverage is uneven across periods and variables, and a period outside the matrix has no data rather than data worth retrying for. Station codes like FI0050R are what every other tool takes; resolve names with find_station.
+>
+> The current year is normally empty — Level 2 publication lags by a year or two — so never treat the latest period as "now".
 >
 > Every result carries a provenance block. Values are Level-2 QC'd, but the annual mean is unweighted across a station's files and no result states what fraction of a period was actually observed. Repeat those caveats when reporting numbers, and carry the citation into any published use.
 
@@ -32,7 +34,169 @@ Returned in the `server/discover` result and put in front of the model once per 
 
 Verbs the *model* calls.
 
-1 tool served today. Further tools are designed in `docs/mcp-server-plan.md`.
+6 tools served today. Further tools are designed in `docs/mcp-server-plan.md`.
+
+### `find_station` — Find a station
+
+*read-only, closed-world (answers from this database, not the web)*
+
+Resolve a station name or code, or browse the catalogue by filters.
+
+Start here: station codes like FI0050R are what every other tool takes, and no
+one types them from memory. A blank query with filters is a browse; a query with
+filters is a search within them.
+
+Matching is on text — code and name, case- and accent-insensitive. It cannot
+interpret a description like "Finnish forest site"; for those, filter by country
+and read the candidates, or load the actris://catalog/stations resource and
+choose from it. A query that matches nothing returns the closest candidates
+rather than an empty list, so narrow from what comes back.
+
+Coverage is reported across every year this server holds, not for one period.
+
+#### Parameters
+
+- **`query`** — `string` | `null`, optional
+  <br>Station name or EBAS code, in any spelling: 'Hyytiala' finds 'Hyytiälä'.
+- **`stations`** — `string`[] | `null`, optional
+  <br>EBAS station codes, e.g. ['FI0050R']. Resolve names with find_station.
+- **`country`** — `string` | `null`, optional
+  <br>Two-letter country code from the station code prefix, e.g. 'FI'.
+- **`network`** — `string` | `null`, optional
+  <br>One of ACTRIS, EMEP, GAW-WDCA.
+- **`has_data_for`** — `string` | `null`, optional
+  <br>Keep only stations holding a usable mean for this variable in some year.
+- **`limit`** — `integer`, optional
+  <br>*Default:* 20
+
+#### Returns
+
+- **`matches`** — [`StationMatch`](#stationmatch)[], **required**
+- **`n_matched`** — `integer`, **required**
+- **`truncated`** — `boolean`, optional
+  <br>*Default:* false
+- **`n_remaining`** — `integer`, optional
+  <br>*Default:* 0
+- **`hint`** — `string` | `null`, optional
+- **`note`** — `string` | `null`, optional
+- **`provenance`** — [`Provenance`](#provenance), optional
+
+#### Shapes
+
+##### `Provenance`
+
+Attached to every tool result. Paraphrase-resistant only if it travels with the data.
+
+- **`source`** — `string`, optional
+  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
+- **`qc_level`** — `string`, optional
+  <br>EBAS QC level of the underlying files.
+  <br>*Default:* lev2
+- **`mean_method`** — `string`, optional
+  <br>*Default:* Annual mean of hourly values > 0. Stations with several files in a year use an unweighted mean of per-file annual means, so a file covering one month counts as much as one covering twelve. Treat cross-station comparisons as indicative.
+- **`coverage_basis`** — `string`, optional
+  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+- **`citation`** — `string`, optional
+  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
+
+##### `StationMatch`
+
+- **`id`** — `string`, **required**
+- **`name`** — `string`, **required**
+- **`country`** — `string`, **required**
+  <br>Two-letter code from the station code prefix, not a country name.
+- **`lat`** — `number`, **required**
+- **`lon`** — `number`, **required**
+- **`networks`** — `string`[], **required**
+- **`coverage`** — `object`, **required**
+  <br>Variable → years holding a usable mean, as ranges ('2000-2019,2021-2024'). Empty means the station is in the record but holds no usable value for any variable.
+- **`matched_on`** — `string`, **required**
+  <br>code, name, filter, or approximate.
+
+### `get_change` — Change between periods
+
+*read-only, closed-world (answers from this database, not the web)*
+
+Change between two periods per station, largest decline first.
+
+Its own tool because the arithmetic across ~144 stations is where doing it by
+hand goes wrong. Sorted by percentage change ascending, so the steepest declines
+lead.
+
+Stations measured in only one of the two periods are reported with a status
+rather than dropped: a station that stopped reporting is not a station that fell
+to zero, and the difference changes what the answer means.
+
+#### Parameters
+
+- **`variable`** — `string`, **required**
+- **`from_period`** — `string`, **required**
+  <br>ISO date or year, e.g. '2005'.
+- **`to_period`** — `string`, **required**
+  <br>ISO date or year, e.g. '2020'.
+- **`stations`** — `string`[] | `null`, optional
+  <br>EBAS station codes, e.g. ['FI0050R']. Resolve names with find_station.
+- **`country`** — `string` | `null`, optional
+  <br>Two-letter country code from the station code prefix, e.g. 'FI'.
+- **`network`** — `string` | `null`, optional
+  <br>One of ACTRIS, EMEP, GAW-WDCA.
+- **`limit`** — `integer`, optional
+  <br>*Default:* 25
+
+#### Returns
+
+- **`variable`** — `string`, **required**
+- **`unit`** — `string`, **required**
+- **`from_period_start`** — `string`, **required**
+- **`from_period_end`** — `string`, **required**
+- **`to_period_start`** — `string`, **required**
+- **`to_period_end`** — `string`, **required**
+- **`resolution`** — `"annual"`, optional
+- **`rows`** — [`ChangeRow`](#changerow)[], optional
+  <br>*Default:* []
+- **`n_changed`** — `integer`, optional
+  <br>*Default:* 0
+- **`n_incomplete`** — `integer`, optional
+  <br>Stations reported with a status other than 'changed'.
+  <br>*Default:* 0
+- **`truncated`** — `boolean`, optional
+  <br>*Default:* false
+- **`n_remaining`** — `integer`, optional
+  <br>*Default:* 0
+- **`hint`** — `string` | `null`, optional
+- **`note`** — `string` | `null`, optional
+- **`error`** — `string` | `null`, optional
+- **`provenance`** — [`Provenance`](#provenance), optional
+
+#### Shapes
+
+##### `ChangeRow`
+
+- **`station_id`** — `string`, **required**
+- **`name`** — `string`, **required**
+- **`country`** — `string`, **required**
+- **`from_mean`** — `number` | `null`, optional
+- **`to_mean`** — `number` | `null`, optional
+- **`change_abs`** — `number` | `null`, optional
+- **`change_pct`** — `number` | `null`, optional
+- **`status`** — `string`, **required**
+  <br>changed, or missing_from / missing_to / missing_both when one or both periods hold no usable value.
+
+##### `Provenance`
+
+Attached to every tool result. Paraphrase-resistant only if it travels with the data.
+
+- **`source`** — `string`, optional
+  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
+- **`qc_level`** — `string`, optional
+  <br>EBAS QC level of the underlying files.
+  <br>*Default:* lev2
+- **`mean_method`** — `string`, optional
+  <br>*Default:* Annual mean of hourly values > 0. Stations with several files in a year use an unweighted mean of per-file annual means, so a file covering one month counts as much as one covering twelve. Treat cross-station comparisons as indicative.
+- **`coverage_basis`** — `string`, optional
+  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+- **`citation`** — `string`, optional
+  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
 
 ### `get_coverage` — Data coverage
 
@@ -108,6 +272,237 @@ What a variable is, in the terms an agent should repeat.
 - **`wavelength_nm`** — `number` | `null`, optional
   <br>Target wavelength in nm; null where the variable has no wavelength dimension. Selection from source files is nearest-neighbour without a tolerance check, so an individual file may carry a nearby wavelength.
 - **`qc_level`** — `string`, **required**
+
+### `get_network_stats` — Network statistics
+
+*read-only, closed-world (answers from this database, not the web)*
+
+Distribution across stations — median, quartiles, range — per period.
+
+Answers "what is normal" rather than "what is this station". Computed from the
+same station values the ranking uses, so a filtered subset and the whole network
+are described the same way.
+
+n_stations counts stations holding a usable value, not stations that reported,
+and it moves year to year: treat a change in the median between two periods with
+different n_stations as partly a change in who was measuring.
+
+#### Parameters
+
+- **`variable`** — `string`, **required**
+- **`start`** — `string` | `null`, optional
+  <br>ISO date or year. Defaults to the earliest period with data.
+- **`end`** — `string` | `null`, optional
+  <br>ISO date or year. Defaults to the latest period with data.
+- **`stations`** — `string`[] | `null`, optional
+  <br>EBAS station codes, e.g. ['FI0050R']. Resolve names with find_station.
+- **`country`** — `string` | `null`, optional
+  <br>Two-letter country code from the station code prefix, e.g. 'FI'.
+- **`network`** — `string` | `null`, optional
+  <br>One of ACTRIS, EMEP, GAW-WDCA.
+
+#### Returns
+
+- **`variable`** — `string`, **required**
+- **`unit`** — `string`, **required**
+- **`periods`** — [`PeriodStats`](#periodstats)[], optional
+  <br>*Default:* []
+- **`note`** — `string` | `null`, optional
+- **`error`** — `string` | `null`, optional
+- **`available_periods`** — `string` | `null`, optional
+- **`suggestion`** — `string` | `null`, optional
+- **`provenance`** — [`Provenance`](#provenance), optional
+
+#### Shapes
+
+##### `PeriodStats`
+
+- **`period_start`** — `string`, **required**
+- **`period_end`** — `string`, **required**
+- **`resolution`** — `"annual"`, optional
+- **`median`** — `number` | `null`, optional
+- **`q1`** — `number` | `null`, optional
+- **`q3`** — `number` | `null`, optional
+- **`min`** — `number` | `null`, optional
+- **`max`** — `number` | `null`, optional
+- **`n_stations`** — `integer`, optional
+  <br>Stations with a usable value in this period, after filters.
+  <br>*Default:* 0
+
+##### `Provenance`
+
+Attached to every tool result. Paraphrase-resistant only if it travels with the data.
+
+- **`source`** — `string`, optional
+  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
+- **`qc_level`** — `string`, optional
+  <br>EBAS QC level of the underlying files.
+  <br>*Default:* lev2
+- **`mean_method`** — `string`, optional
+  <br>*Default:* Annual mean of hourly values > 0. Stations with several files in a year use an unweighted mean of per-file annual means, so a file covering one month counts as much as one covering twelve. Treat cross-station comparisons as indicative.
+- **`coverage_basis`** — `string`, optional
+  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+- **`citation`** — `string`, optional
+  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
+
+### `get_ranking` — Station ranking
+
+*read-only, closed-world (answers from this database, not the web)*
+
+Stations ranked highest to lowest for one period and variable.
+
+The ranking chart as data. Use this instead of get_series when the question is
+about many stations at one time rather than one station over time.
+
+Stations matching the filters but holding no usable value for the period are
+counted in n_considered and left out of the rows — the gap between the two
+numbers is how much of the network was silent that year.
+
+#### Parameters
+
+- **`period`** — `string`, **required**
+  <br>ISO date or year, e.g. '2020'.
+- **`variable`** — `string`, **required**
+- **`stations`** — `string`[] | `null`, optional
+  <br>EBAS station codes, e.g. ['FI0050R']. Resolve names with find_station.
+- **`country`** — `string` | `null`, optional
+  <br>Two-letter country code from the station code prefix, e.g. 'FI'.
+- **`network`** — `string` | `null`, optional
+  <br>One of ACTRIS, EMEP, GAW-WDCA.
+- **`limit`** — `integer`, optional
+  <br>*Default:* 25
+
+#### Returns
+
+- **`variable`** — `string`, **required**
+- **`unit`** — `string`, **required**
+- **`period_start`** — `string`, **required**
+- **`period_end`** — `string`, **required**
+- **`resolution`** — `"annual"`, optional
+- **`rows`** — [`RankingRow`](#rankingrow)[], optional
+  <br>*Default:* []
+- **`n_with_data`** — `integer`, optional
+  <br>*Default:* 0
+- **`n_considered`** — `integer`, optional
+  <br>Stations matching the filters, including those with no usable value.
+  <br>*Default:* 0
+- **`truncated`** — `boolean`, optional
+  <br>*Default:* false
+- **`n_remaining`** — `integer`, optional
+  <br>*Default:* 0
+- **`hint`** — `string` | `null`, optional
+- **`note`** — `string` | `null`, optional
+- **`error`** — `string` | `null`, optional
+- **`available_periods`** — `string` | `null`, optional
+- **`suggestion`** — `string` | `null`, optional
+- **`provenance`** — [`Provenance`](#provenance), optional
+
+#### Shapes
+
+##### `Provenance`
+
+Attached to every tool result. Paraphrase-resistant only if it travels with the data.
+
+- **`source`** — `string`, optional
+  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
+- **`qc_level`** — `string`, optional
+  <br>EBAS QC level of the underlying files.
+  <br>*Default:* lev2
+- **`mean_method`** — `string`, optional
+  <br>*Default:* Annual mean of hourly values > 0. Stations with several files in a year use an unweighted mean of per-file annual means, so a file covering one month counts as much as one covering twelve. Treat cross-station comparisons as indicative.
+- **`coverage_basis`** — `string`, optional
+  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+- **`citation`** — `string`, optional
+  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
+
+##### `RankingRow`
+
+- **`rank`** — `integer`, **required**
+- **`station_id`** — `string`, **required**
+- **`name`** — `string`, **required**
+- **`country`** — `string`, **required**
+- **`networks`** — `string`[], **required**
+- **`mean`** — `number`, **required**
+
+### `get_series` — Station time series
+
+*read-only, closed-world (answers from this database, not the web)*
+
+Annual means for named stations over a period range.
+
+The workhorse: one row per station, variable and period. Every period in the
+range is present, with a null mean where no usable value exists — a period
+absent from the rows would be indistinguishable from one that was never asked
+for.
+
+Capped at 10 stations and 30 periods, and truncation drops whole stations: a
+station returned with only part of its record reads as complete and invites a
+trend that is not there. For questions across many stations use get_ranking or
+get_change instead.
+
+Omitting start or end resolves to the range that actually holds data, which is
+not the current year — Level 2 publication lags by a year or two.
+
+#### Parameters
+
+- **`stations`** — `string`[], **required**
+  <br>EBAS station codes. Required — resolve names with find_station first.
+- **`variables`** — `string`[] | `null`, optional
+  <br>Defaults to all three.
+- **`start`** — `string` | `null`, optional
+  <br>ISO date or year, e.g. '2005' or '2005-01-01'. Defaults to the earliest period holding data.
+- **`end`** — `string` | `null`, optional
+  <br>ISO date or year. Defaults to the latest period holding data — which is not the current year.
+- **`resolution`** — `"annual"`, optional
+
+#### Returns
+
+- **`rows`** — [`SeriesRow`](#seriesrow)[], **required**
+- **`period_start`** — `string`, **required**
+- **`period_end`** — `string`, **required**
+- **`resolution`** — `"annual"`, optional
+- **`n_stations_requested`** — `integer`, optional
+  <br>*Default:* 0
+- **`n_stations_returned`** — `integer`, optional
+  <br>*Default:* 0
+- **`truncated`** — `boolean`, optional
+  <br>*Default:* false
+- **`n_remaining`** — `integer`, optional
+  <br>*Default:* 0
+- **`hint`** — `string` | `null`, optional
+- **`note`** — `string` | `null`, optional
+- **`error`** — `string` | `null`, optional
+- **`provenance`** — [`Provenance`](#provenance), optional
+
+#### Shapes
+
+##### `Provenance`
+
+Attached to every tool result. Paraphrase-resistant only if it travels with the data.
+
+- **`source`** — `string`, optional
+  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
+- **`qc_level`** — `string`, optional
+  <br>EBAS QC level of the underlying files.
+  <br>*Default:* lev2
+- **`mean_method`** — `string`, optional
+  <br>*Default:* Annual mean of hourly values > 0. Stations with several files in a year use an unweighted mean of per-file annual means, so a file covering one month counts as much as one covering twelve. Treat cross-station comparisons as indicative.
+- **`coverage_basis`** — `string`, optional
+  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+- **`citation`** — `string`, optional
+  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
+
+##### `SeriesRow`
+
+- **`station_id`** — `string`, **required**
+- **`station_name`** — `string`, **required**
+- **`variable`** — `string`, **required**
+- **`unit`** — `string`, **required**
+- **`period_start`** — `string`, **required**
+- **`period_end`** — `string`, **required**
+- **`resolution`** — `"annual"`, optional
+- **`mean`** — `number` | `null`, **required**
+  <br>Null means the period was requested and no usable value exists — not that it was omitted.
 
 ## Resources
 

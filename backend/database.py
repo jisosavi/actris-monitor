@@ -38,6 +38,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_lookup
     ON station_records (year, variable, station_id);
 CREATE INDEX IF NOT EXISTS idx_sr_yv
     ON station_records (year, variable);
+-- idx_sr_lookup leads with `year`, so a lookup by station code alone cannot use
+-- it. Every MCP tool that starts from a station needs this one.
+CREATE INDEX IF NOT EXISTS idx_sr_station
+    ON station_records (station_id);
 
 CREATE TABLE IF NOT EXISTS network_stats (
     id         INTEGER PRIMARY KEY,
@@ -244,6 +248,43 @@ async def get_station_catalog() -> list[dict]:
             "years":        years.get(r["station_id"], {}),
         }
         for r in meta_rows
+    ]
+
+
+async def get_series_rows(
+    station_ids: list[str], variables: list[str], year_from: int, year_to: int
+) -> list[dict]:
+    """Stored means for a set of stations and variables across a year range.
+
+    Returns only the rows that exist. Filling the gaps is the caller's job — the
+    MCP layer emits every requested period with a null mean, because a period
+    missing from a list tells a reader nothing while an explicit null tells them
+    it was asked for and not found.
+    """
+    assert _db
+    if not station_ids or not variables:
+        return []
+
+    station_slots = ",".join("?" for _ in station_ids)
+    variable_slots = ",".join("?" for _ in variables)
+    async with _db.execute(
+        "SELECT station_id, name, variable, year, mean FROM station_records "
+        f"WHERE station_id IN ({station_slots}) AND variable IN ({variable_slots}) "
+        "AND year BETWEEN ? AND ? "
+        "ORDER BY station_id, variable, year",
+        (*station_ids, *variables, year_from, year_to),
+    ) as cur:
+        rows = await cur.fetchall()
+
+    return [
+        {
+            "station_id": r["station_id"],
+            "name":       r["name"],
+            "variable":   r["variable"],
+            "year":       r["year"],
+            "mean":       r["mean"],
+        }
+        for r in rows
     ]
 
 

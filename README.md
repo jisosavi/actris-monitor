@@ -87,13 +87,13 @@ https://actris-monitor-production.up.railway.app/mcp
 
 **Please cite the data.** Every tool response carries a `provenance` block naming EBAS/ACTRIS and the citation expectation. The measurements are contributed by station principal investigators; acknowledge them and EBAS/ACTRIS in any published use.
 
-**What's there today** — one tool, two resources and one prompt:
+**What's there today** — six tools, two resources and one prompt:
 
-- `get_coverage` — the period × variable availability matrix plus each variable's definition. The model calls this itself.
+- `get_coverage` — the period × variable availability matrix plus each variable's definition; `find_station` — resolve a name or code, or browse by country and network; `get_series` — annual means per station over a period range; `get_ranking` — stations highest to lowest for one period; `get_network_stats` — median, quartiles and range across stations; `get_change` — change between two periods, steepest decline first. The model calls these itself.
 - `actris://catalog/stations` — all 144 stations with coordinates, networks and per-variable coverage; `actris://citation` — attribution to paste into a manuscript. Resources are *attached by you*, from the composer's connector menu.
 - **Data availability briefing** — a prompt you pick from that same menu; it reports what exists, names the gaps, and repeats the caveats.
 
-The full reference, including the instructions the model receives, is in [docs/mcp-reference.md](docs/mcp-reference.md) — generated from the server, so it cannot drift from what the agent is actually told. Five more tools are designed in [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
+The full reference, including the instructions the model receives, is in [docs/mcp-reference.md](docs/mcp-reference.md) — generated from the server, so it cannot drift from what the agent is actually told. What remains — monthly resolution, and prompts for trend reports and network comparisons — is in [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
 
 Two caveats the responses state explicitly and any consumer should repeat: means are unweighted across a station's files within a year, and no figure says what fraction of a period was actually observed.
 

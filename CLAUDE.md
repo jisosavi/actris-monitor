@@ -97,9 +97,16 @@ that or add retry loops without a good reason.
 
 Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak
 Streamable HTTP. `backend/mcp_server/` holds it and `docs/mcp-server-plan.md` has
-the design and the roadmap. Live today: **one tool of six** (`get_coverage`), **two
-resources** (`actris://catalog/stations`, `actris://citation`) and **one prompt**
-(`data_availability_briefing`).
+the design and the roadmap. Live today: **all six tools** (`get_coverage`,
+`find_station`, `get_series`, `get_ranking`, `get_network_stats`, `get_change`),
+**two resources** (`actris://catalog/stations`, `actris://citation`) and **one
+prompt** (`data_availability_briefing`).
+
+**Tests:** `cd backend && pytest` (install `requirements-dev.txt` first). They drive
+the tools through the SDK's in-process client — no HTTP, no port — and target the
+conventions that fail *silently*: gaps as explicit nulls, truncation by whole
+station, a search that never returns nothing, and stations that vanish from a
+change ranking. Add a case beside each new tool rather than after five of them.
 
 **`docs/mcp-reference.md` is generated — never edit it by hand.** After adding or
 changing a tool, run `cd backend && python scripts/dump_mcp_tools.py`.
