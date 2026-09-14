@@ -1,560 +1,286 @@
-# MCP Server Plan
+# MCP Server — state and roadmap
 
-Design plan for exposing ACTRIS Monitor's data to AI agents over the Model Context
-Protocol (MCP). Written 2026-09-10.
+ACTRIS Monitor exposes its data to AI agents over the Model Context Protocol at
+`/mcp`, on the same Railway container and the same SQLite file as the dashboard.
 
-**Status (2026-09-14):** stages 1–3 are done. Live are the transport, **all six
-tools** — `get_coverage`, `find_station`, `get_series`, `get_ranking`,
-`get_network_stats`, `get_change` — **two resources** (`actris://catalog/stations`,
-`actris://citation`), **one prompt** (`data_availability_briefing`) and a test
-suite driving the tools through the SDK's in-process client. Remaining: stage 4
-(instrument backfill, then the two analysis prompts) and stage 5 (monthly). See
-`backend/mcp_server/`, the generated `docs/mcp-reference.md`, and the MCP section
-of `CLAUDE.md`. The v1 spike deliberately proved the mount, the Host allowlist, the
-rate limiter and the response conventions against a real client before writing five
-more tools against guesses.
+This document is **what exists**, **what might still be done**, and **which
+decisions not to relitigate**. The per-tool reference is generated from the server
+itself into `docs/mcp-reference.md` — never duplicated here, because the copy that
+drifts is the one nobody reads. Operational gotchas live in `CLAUDE.md`.
 
-Everything below still describes the target; notes marked **implemented**,
-**superseded** or **dropped** record where reality has moved. Where this document
-and `## Implementation order` disagree, that section wins — it is the newer
-decision.
+Originally written 2026-09-10 as a design plan; rewritten 2026-09-14 once the tool
+surface was complete.
 
-## Decisions already made
+---
 
-| Question | Decision | Why |
-|---|---|---|
-| Granularity | **Annual only in v1**, monthly on the roadmap | Ships in days; the forward-compat work below makes monthly additive rather than breaking |
-| Hosting | **Remote, on the existing Railway service** | The backend is already running with a populated DB; a `/mcp` mount is close to free |
-| Codebase | **Same repo, second entrypoint** | Same deploy, same container, same SQLite volume. A separate repo means a second Railway service and either a duplicated DB or a network hop |
-| Output | **Data only, no rendered visuals** | Token-efficient, and agents render their own charts well from clean tabular data |
+# What exists
 
-Deliberately *not* chosen (revisit later, don't relitigate without new information):
+**Endpoint:** `https://actris-monitor-production.up.railway.app/mcp`, Streamable
+HTTP, open and rate-limited rather than authenticated. `.mcp.json` at the repo root
+points at it.
 
-- Local stdio package on PyPI — possible in future; see "Keep the core decoupled".
-- Server-rendered PNGs or deep links into the dashboard — the frontend has no URL
-  state today, so deep links would require adding it.
-- Building on the ACTRIS Data Centre REST API instead of THREDDS — would discard
-  the catalog logic in `ebas_thredds.py`, which is the main asset here.
+## The surface
 
-## Where the data stands today
+Six tools, two resources, one prompt. Full schemas in `docs/mcp-reference.md`.
 
-Grounding facts a new session needs before touching anything:
+| Tool | Answers |
+|---|---|
+| `get_coverage` | What periods and variables exist at all, with a station count per cell |
+| `find_station` | Name or code → EBAS station code; or browse by country, network, variable |
+| `get_series` | Annual means for named stations over a period range |
+| `get_ranking` | Stations highest to lowest for one period |
+| `get_network_stats` | Median, quartiles and range across stations, per period |
+| `get_change` | Change between two periods per station, steepest decline first |
 
-- `backend/ebas_thredds.py` holds the valuable part: parsing the ~14k-file THREDDS
-  catalog, decoding instrument and date from filenames, reading `.das` metadata for
-  station coordinates and network tags, and fetching only a year slice over OPeNDAP
-  ASCII (~130 KB) instead of whole netCDF files.
-- `station_records` stores **one row per (year, variable, station)** with a single
-  `mean`. `_fetch_file_mean` collapses the year slice to one float immediately —
-  sub-annual data is downloaded and discarded.
-- `network_stats` stores median/q1/q3/min/max/n per (year, variable).
-- Three variables (`N`, `scattering`, `absorption`), Level 2 only, 2000 onwards.
-- Fetching is on demand via the Data Setup panel — correct for a single-user
-  dashboard, wrong for a shared agent endpoint (see "Pre-populate").
+**Resources** (the client attaches these; the model cannot):
+`actris://catalog/stations` — all 144 stations with position, networks and
+per-variable coverage as year ranges, ~50 KB, sized deliberately: year *ranges* not
+lists, coordinates at 4 dp, no measurements. `actris://citation` — attribution in a
+form a person pastes into a manuscript.
 
-## Target architecture
+**Prompt:** `data_availability_briefing(variable?)` — a person picks it from the
+composer menu.
 
-One Railway container, one process, one SQLite file:
+## How it is wired
 
 ```
 FastAPI app (Railway)
 ├── /api/*      existing REST  → dashboard on isosavi.com
 ├── /mcp        Streamable HTTP → AI agents
-└── shared: database.py, ebas_thredds.py, aggregation.py
+└── shared: database.py, variables.py, aggregation.py
     └── /data/actris.db (volume)
 ```
 
-Layout inside `backend/`:
-
 ```
-backend/
-├── main.py            # mounts /mcp alongside /api (mount stays LAST in the file)
-├── variables.py       # implemented: one definition per variable, shared by all three
-├── mcp_server/        # NOT "mcp/" — see below
-│   ├── server.py      # tool + resource registration, transport security
-│   ├── tools.py       # the 8 tools
-│   ├── formatting.py  # truncation, provenance, error messages
-│   └── limits.py      # implemented: rate limit + concurrency cap
-├── database.py        # unchanged, imported by both
-└── ebas_thredds.py    # unchanged, imported by both
+backend/mcp_server/
+├── server.py      MCPServer instance, registration, transport security
+├── tools.py       the six tools
+├── resources.py   the two resources
+├── prompts.py     the prompt
+├── formatting.py  provenance, caps, shared rendering
+└── limits.py      rate limit + concurrency cap (stands in for auth)
 ```
 
-**The package is `mcp_server/`, not `mcp/`.** `backend/` is the working directory
-and imports are flat (`import database`), so a local `mcp/` package would shadow
-the installed `mcp` distribution and break its own import.
+The package is `mcp_server/`, not `mcp/`: `backend/` is the working directory with
+flat imports, so a local `mcp/` would shadow the installed SDK.
 
-Add the MCP dependency to `backend/requirements.txt`. `backend/Dockerfile` needed
-one change after all: `--proxy-headers --forwarded-allow-ips="*"`, because Railway
-terminates TLS and without it uvicorn builds `http://` redirects (which MCP clients
-refuse) and the rate limiter sees the proxy as every caller.
+Four things about the SDK (v2, `mcp==2.2.0`) that are easy to get wrong, all
+covered in `CLAUDE.md`: the class is `MCPServer`, not `FastMCP`; a mounted
+sub-app's lifespan never runs, so the host app must enter
+`mcp.session_manager.run()`; DNS-rebinding protection is armed to localhost by
+default, so `MCP_ALLOWED_HOSTS` is required in deployment or everything answers
+`421`; and `stateless_http` is a legacy-only knob, because a 2026-07-28 request is
+one self-contained POST.
 
-### SDK reality (v2, `mcp==2.2.0`)
+**A new tool is invisible to already-connected clients.** The surface is discovered
+once per connection via `server/discover`, and `listChanged` promises a push the
+stateless transport cannot deliver. Releases are therefore batched, and after one,
+clients must reconnect.
 
-This plan was written against the v1 API. Four corrections:
+## The data it serves
 
-- `from mcp.server import MCPServer` — not `FastMCP`. Response models are Pydantic,
-  and `structured_content` comes for free from the return annotation.
-- **A mounted sub-app's lifespan never runs.** The host app must enter
-  `mcp.session_manager.run()`, and the manager exists only after
-  `streamable_http_app()` has been called.
-- **DNS-rebinding protection is on by default, allowlisting localhost only.** Behind
-  a real hostname every request is `421` until `transport_security=` is given an
-  allowlist. This is the most likely way a first deploy fails.
-- **`stateless_http=True` is a legacy-only knob.** On protocol 2026-07-28 a request
-  is one self-contained POST with no session id, so there is nothing for Railway to
-  be sticky about and nothing to configure. Set for the legacy leg only, which costs
-  nothing here because the server needs no server-to-client back-channel.
+- **Annual means only** — `station_records` holds one row per (year, variable,
+  station). Monthly or daily requests cannot be satisfied, and the tools say so
+  rather than approximating.
+- **Level 2 only**, three variables (`N`, `scattering`, `absorption`), 2000 onwards.
+- **Fully pre-populated**: 81 (year, variable) pairs, 144 stations. No agent request
+  can trigger a fetch, and nothing in the MCP path reaches NILU.
+- **The current year is normally empty.** Level 2 publication lags a year or two:
+  2026 holds zero stations, 2025 holds 12–16, 2023 holds 22–33. No tool resolves
+  "latest" silently; where one picks a range it names the range it picked.
 
-**The MCP surface is read-only.** Do not expose `start_fetch`, `reset`, or
-`backfill_networks` as tools. Agents retry on ambiguity and a retried reset is
-unrecoverable. Those stay on the authenticated REST side for admin use.
+## Conventions every response follows
 
-### Pre-populate — **done**
+These matter more than the tool list.
 
-Because the DB is shared across agents, it had to be filled completely so that no
-agent request could trigger a fetch job. Fetch-on-demand latency is acceptable in a
-dashboard where the user chose to press the button; it is not acceptable inside a
-tool call.
+- **Provenance travels with the data.** Unit, wavelength, instrument, QC level, and
+  the two caveats below, in every payload — a model cites what it was handed, not
+  what the documentation says.
+- **Absence is stated, never implied.** A requested period with no data returns a
+  null mean; a station holding nothing returns flagged; a query matching nothing
+  returns candidates and a way forward. Silence is indistinguishable from "does not
+  exist".
+- **Truncation is never silent**, and drops whole stations rather than trailing
+  rows: half a station's periods reads as a complete record and invites a trend that
+  is not there. `truncated`, `n_remaining` and a `hint` naming the better tool.
+- **Errors teach** — what *is* available and what to try next, not a bare 404.
 
-Production holds all of it: **81 (year, variable) pairs — all three variables,
-2000–2026, 144 stations** (verified 2026-09-11). 2026 is present with
-`n_stations: 0`, because no Level-2 data is published for the current year yet —
-which is the pipeline being honest, not a gap.
+## Known limitations, disclosed rather than fixed
 
-## Tool surface (v1)
+1. **`data_coverage` is a boolean in disguise** — `ebas_thredds.py` sets
+   `1.0 if values else 0.0`. The MCP layer never emits it, and every
+   `provenance.coverage_basis` says coverage is presence only. A station with two
+   months of data is indistinguishable from one with twelve.
+2. **Unweighted mean of means** — multi-file stations use `np.mean(values)` over
+   per-file means with no weighting by sample count. `provenance.mean_method` says
+   so in every payload.
 
-Originally eight tools, **now six** — see `## Implementation order` for the two that
-were cut and why. None are named or shaped around "annual": resolution is a
-parameter and periods are ISO dates, so monthly slots in without breaking anything.
+Both need the re-fetch, so both are fixed by the monthly work below.
 
-| Tool | Purpose |
-|---|---|
-| `find_station(query?, stations?, country?, network?, has_data_for?, limit)` | Resolution by name or code — "Hyytiälä", "SMEAR II" → `FI0050R` — returning candidates with code, name, country, networks, and which variables/years they cover. **Absorbed `list_stations`**: a blank query with filters is a browse. String matching only: a semantic query like "Finnish forest site" degrades to candidates rather than to nothing. |
-| ~~`list_stations(...)`~~ | **Merged into `find_station`.** |
-| ~~`list_variables()`~~ | **Dropped.** Every `get_coverage` response already carries the variable definitions, and so does the catalogue resource. |
-| `get_series(stations[], variables[], start, end, resolution)` | The workhorse. `resolution` enum is `["annual"]` in v1, gains `"monthly"` in v2. Capped at 10 stations × 30 periods, truncated by whole station. |
-| `get_ranking(period, variable, stations?, country?, network?, limit)` | Highest-to-lowest — the ranking chart as data. |
-| `get_network_stats(period_range, variable, stations?, country?, network?)` | median / q1 / q3 / min / max / n_stations. |
-| `get_change(variable, from_period, to_period, stations?, country?, network?, limit)` | Computed deltas, absolute and %, rankable. Its own tool because "which stations declined most 2005→2020" across 144 stations is where agents fumble doing arithmetic by hand. (The original `scope` parameter was never defined; these filters replace it.) |
-| `get_coverage()` | **Implemented.** The period × variable availability matrix, so an agent can check instead of discovering gaps through failures. Also returns each variable's definition (unit, instrument, wavelength, QC level) so values can be described without a second call. |
+## Tests
 
-`find_station` is the highest-value tool in the list. Agents never say `FI0050R`.
-Without fuzzy resolution, most sessions open with a failed call.
+`cd backend && pytest` (after `requirements-dev.txt`). They drive the tools through
+the SDK's in-process client — no HTTP, no port, about a second — and target the
+conventions that fail *silently*: gaps as explicit nulls, truncation by whole
+station, a search that never returns nothing, stations surviving a change ranking,
+provenance on every tool.
 
-## Implementation order (decided 2026-09-14)
+---
 
-**The surface is six tools, not eight.** Two were cut once the catalogue resource
-existed:
+# Roadmap
 
-- `list_variables` — **dropped.** Every `get_coverage` response already carries the
-  full variables block, and so does the catalogue resource. A third copy is a third
-  thing to keep in sync.
-- `list_stations` — **merged into `find_station`**, which becomes
-  `find_station(query?, country?, network?, has_data_for?, limit)`. A blank query
-  with filters is a browse; a query with filters is a search. One implementation,
-  and one fewer choice for a model to get wrong.
+## Next — instrument backfill, then the analysis prompts
 
-**A correction to this document's earlier claim.** It said `get_series` needs three
-things the schema lacks. In fact they split three ways, and only one is blocking:
+An admin endpoint mirroring `backfill_networks`, reading only the cached THREDDS
+catalog: the instrument is already decoded from the filename by `_parse_catalog`,
+so this needs **no re-fetch**, just a column on `station_records` and a pass over
+the catalog.
 
-- *Gap markers* need no schema change — emit every period in range with
-  `mean: null` rather than omitting it. A model that sees 2007 missing concludes
-  nothing; one that sees `2007: null` knows.
-- *Instrument per period* is not stored, but needs **no re-fetch**: `_parse_catalog`
-  already decodes it from the THREDDS filename, so a backfill can populate it from
-  catalog metadata alone, exactly like `backfill_networks`.
-- *Valid-sample counts* genuinely need the re-fetch, because `_compute_annual_mean`
-  discards `valid.size`. They ride along with the monthly work.
-
-### Cross-cutting decisions
-
-**Ship stages 1–3 as one release.** A client discovers the tool list once per
-connection, and `listChanged` cannot be pushed on the stateless 2026-07-28
-transport (see `CLAUDE.md`). Every release therefore costs every connected user a
-reconnect, and until they reconnect the new tools are invisible. Five tools in
-three releases means three reconnects and three windows where the surface a user
-sees does not match the documentation. The stages below are **build order, not
-release boundaries**.
-
-**Search degrades; it never returns nothing.** `find_station` does string matching
-— exact, prefix, substring, diacritic-folded, over code and name — and that
-genuinely resolves "Hyytiälä" and "SMEAR II". It cannot resolve "Finnish forest
-site", which is not a string operation, so the tool must never answer a non-empty
-query with an empty list: fall back to the closest candidates, or to a hint to
-filter by country, and let the model do the semantics with candidates in hand. An
-empty result reads as "no such station" and ends the session; a weak result reads
-as "narrow this down" and continues it.
-
-**Caps: 10 stations × 30 periods, truncated by whole station.** The earlier figure
-of 20 × 30 is ~600 rows, roughly 54 KB — comparable to the entire station catalogue
-for a single call, on top of `get_coverage`'s 19.5 KB. And truncation must drop
-whole stations, never rows: a station returned with half its periods invites
-exactly the wrong conclusion about a trend.
-
-**One filter vocabulary across every tool that selects stations**:
-`stations?`, `country?`, `network?`, `limit`. The `scope` parameter in the original
-`get_change` signature was never defined anywhere in this document — it is replaced
-by these. Three tools with three filter shapes is three chances for a model to
-guess wrong.
-
-**No implicit "latest period".** Level 2 lags publication by a year or two, so the
-newest period is reliably the emptiest:
-
-| Year | N | scattering | absorption |
-|---|---|---|---|
-| 2023 | 22 | 29 | 33 |
-| 2024 | 23 | 25 | 22 |
-| 2025 | 15 | 12 | 16 |
-| 2026 | 0 | 0 | 0 |
-
-A tool that silently defaults to the latest period returns nothing, and the model
-reports "no data for this station" when 2023 is full. Either require explicit
-periods, or resolve "latest" to the latest period **with data** and name the period
-it picked in the response.
-
-**Compute station facts over the whole record, never one period.** `has_data_for`
-and any "do we know this station" test read the catalogue across all years. This is
-not hypothetical: the NRT map feature shipped with exactly this bug — it derived a
-global fact from the selected year's stations, so in an empty year every station
-looked unknown. It was found by running the app, not by reading the code.
-
-**Tests arrive in stage 1, not after.** The response conventions — caps, gap
-markers, teaching errors, provenance — are load-bearing across five tools and fail
-silently when they regress. The SDK's in-process client (`Client(mcp)`, no HTTP, no
-server) makes a real tool-call test a few lines. Retrofitting tests onto five tools
-costs more than writing them beside the first.
-
-**Out of scope: near-real-time data.** `backend/nrt.py` now exists, and an agent
-cannot currently ask whether a station has recent measurements. Exposing that
-through MCP — a `live` flag on the catalogue resource, or a tool — is deliberately
-**not** part of this work; see `docs/nrt-integration-plan.md`. It would also mean
-mixing Level 1.5 into a surface whose provenance block promises Level 2, which
-needs its own thinking rather than a flag.
-
-### Stages
-
-1. **Make stations addressable.** Migration adding an index on
-   `station_records(station_id)` — `idx_sr_lookup` leads with `year`, so every
-   lookup by station code is a full scan today — then `find_station`, which reuses
-   `get_station_catalog()` and filters 144 stations in Python rather than adding SQL.
-   Stations whose coverage is empty must come back flagged, not filtered out:
-   Vielsalm is real, and an agent that cannot see it will report it does not exist.
-   Plus the in-process test harness, used from here on.
-2. **`get_series`.** Long rows, one per (station, variable, period), capped per the
-   decision above — 144 × 27 is ~3,900 rows, so this is where `formatting.py`'s
-   deferred `cap()` helper gets written, with `truncated`, `n_remaining` and a
-   `hint` naming `get_ranking` or `get_change` for wide questions.
-3. **The aggregate three together** — `get_network_stats` (reads `network_stats`
-   directly, nearly free), `get_ranking`, `get_change`. Built in one sitting so
-   `n_stations` means the same thing in all three and all three distinguish "no
-   data" from a genuine zero, which 2026 makes live right now. `get_change` must
-   report stations present in one period but not the other as changed-unknown rather
-   than dropping them.
-
-   *Stages 1–3 release together.*
-4. **Instrument backfill, then the prompts.** An admin endpoint mirroring
-   `backfill_networks`, reading only the cached catalog. Then `station_trend_report`
-   and `network_comparison`, which need the instrument to flag the mid-record
-   instrument change that most often invalidates a trend.
-5. **Deferred to the monthly work** — valid-sample counts, real coverage fractions,
-   weighted means, the `station_series` table. All need the re-fetch, so they ride
-   along rather than costing a separate one.
-
-Every release regenerates `docs/mcp-reference.md` and is accepted against a real
-client, not against a 200 from curl.
-
-## Response conventions
-
-Cross-cutting rules for every tool. These matter more than the tool list.
-
-**Caps with explicit truncation.** Never truncate silently:
-
-```json
-{ "rows": [...], "truncated": true, "n_remaining": 340,
-  "hint": "narrow by country or network" }
-```
-
-**Provenance in the payload, not the docs.** Every response carries `unit`,
-`level`, `instrument`, `wavelength_nm`, `coverage`, and source filenames. A model
-cites only what is in the tool result.
-
-**Errors that teach.** Today `/api/stations/{year}/{variable}` returns
-`404 No data in database for 2024/absorption`. For an agent, return the recovery
-path instead:
-
-```json
-{ "error": "no_data",
-  "message": "No data for 2024/absorption.",
-  "available_years": [2000, 2023],
-  "suggestion": "Nearest available period is 2023." }
-```
-
-Agents recover from that; they loop on a bare 404. This is probably the single
-largest lever on real-world success rate.
-
-## Resources and prompts
-
-Three mechanisms, three distinct failure modes. **Tools** are verbs the model calls
-— they fix "the agent can't get the data". **Resources** are documents the
-application attaches — they fix "the agent doesn't know what exists", which is a
-real problem here because agents never say `FI0050R`. **Prompts** are procedures
-with the caveats baked in — they fix "the agent states a number as fact without the
-caveats", the specific risk of a dataset with unweighted means and presence-only
-coverage.
-
-Claude Desktop surfaces resources and prompts in the composer under Connectors, so
-their titles are user-facing UI labels, not internal identifiers.
-
-### Resources
-
-**Implemented:**
-
-- `actris://catalog/stations` (`application/json`) — every station with identity,
-  position, networks, and a per-variable coverage summary as compact year ranges
-  (`"2000-2019,2021-2024"`). Attached once, it answers "which Finnish ACTRIS sites
-  measure absorption" and "what is Hyytiälä's station code" with **no tool call**,
-  removing the failed first call that otherwise opens a session.
-  - **Size is the design constraint: ~228 bytes per station, so ~50 KB (~13k
-    tokens) for the full network.** Hence year *ranges* rather than lists,
-    coordinates rounded to 4 dp, and no measurements in the document. It is an
-    attach-when-relevant resource, not something to load reflexively.
-  - Metadata is picked from each station's most recent year, because it is stored
-    per station-year and the rows can disagree — `update_station_meta_bulk` rewrites
-    lat/lon/networks for all of a station's rows but leaves `name`/`country` as
-    whatever each fetch wrote. `database.get_station_catalog` relies on SQLite
-    guaranteeing that bare columns beside a `MAX()` come from the row that produced
-    the maximum.
-  - **This does not retire `find_station`.** The resource serves clients that attach
-    it; the tool serves clients that ignore resources, sessions where 50 KB is better
-    spent elsewhere, and fuzzy matching done server-side ("Finnish forest site" →
-    `FI0050R`), which a raw JSON document cannot do. They share one DB helper.
-- `actris://citation` (`text/markdown`) — the attribution EBAS/ACTRIS and the
-  contributing PIs expect, in a form a person can paste into a manuscript. Not
-  redundant with the `provenance` field: provenance is machine-readable and aimed at
-  the model, this is a document aimed at a human. Same content, different audience.
-
-**Deliberately not built:**
-
-- `actris://variables` and `actris://coverage` — both already travel inside
-  `get_coverage`'s payload. A second copy creates two sources for one truth, and the
-  one that goes stale is the one nobody reads.
-- `actris://station/{id}` (templated) — attractive, but it is the same query as
-  `get_series`. Build the tool first and make the resource a thin wrapper over it,
-  or the query gets written twice.
-
-### Prompts
-
-**Implemented:** `data_availability_briefing(variable?)` — the only one the current
-tool surface can support. Instructs a model to call `get_coverage` and then report
-what exists, **name** the gaps, distinguish "period reporting zero stations" from
-"period never fetched", restate what `coverage_basis` and `mean_method` mean for the
-requested analysis, and refuse to approximate monthly figures from annual means.
-Modest analytical value; its real job was proving the prompt path surfaces in a
-client before the expensive ones get written.
-
-**Designed, blocked on tools — and specified now on purpose.** A prompt's checklist
-is a requirements document for the tools it calls, so writing it first surfaces
-return-shape requirements that tool design alone misses:
+Then the two prompts that need it:
 
 - `station_trend_report(station, variable, from_period, to_period)` — resolve the
   station, check coverage, fetch the series, then report against a fixed checklist:
-  state unit and wavelength from provenance rather than memory; say how many
-  requested periods actually have data and name the gaps; do not use the word
-  "trend" below a minimum number of periods; flag that a "low" year may be two
-  months of winter; flag an instrument change between endpoints, which alone can
-  move the number; carry the citation.
-  - **What that forces on `get_series`:** explicit gap markers rather than silently
-    omitted periods, a per-period valid-sample count, and the instrument per period.
-    None of it is in the schema today — `station_records` does not even store the
-    instrument.
-- `network_comparison(variable, period, network?)` — needs `get_ranking` and
-  `get_network_stats`, and **forces them to agree on what `n_stations` counts** and
-  to distinguish "no data" from a genuine zero. That distinction is live already:
-  2026 legitimately reports `n_stations: 0` for all three variables, because no
-  Level-2 data is published for the current year yet.
-- `anomaly_check(period, variable)` — needs a series plus network statistics for the
-  same period.
+  unit and wavelength from provenance rather than memory; how many requested periods
+  actually have data, with the gaps named; no use of the word "trend" below a
+  minimum number of periods; a "low" year may be two months of winter; **an
+  instrument change between endpoints, which alone can move the number**; the
+  citation.
+- `network_comparison(variable, period, network?)` — ranking plus network
+  statistics, with "no data" kept distinct from a genuine zero.
 
-### Sequencing
+## Then — monthly resolution
 
-1. **Done** — the two resources and `data_availability_briefing`, all implementable
-   against today's schema.
-2. **Next** — `find_station` and `get_series`, plus the index they need
-   (`idx_sr_lookup` leads with `year`, so a lookup by station code alone is a full
-   scan) and the instrument-per-period the trend report requires.
-3. **Then** — `station_trend_report` and `network_comparison`, which now have tools
-   to call.
+The large one, and mostly wall-clock rather than development time: it re-runs the
+fetch against NILU. It also fixes both known limitations, which is why they wait
+for it.
 
-## Auth and hardening
+Four things are already in place so this stays additive: `resolution` is an enum
+parameter, every response carries ISO `period_start`/`period_end` rather than a bare
+year, the tools are shaped around periods rather than years, and the response
+schemas do not assume annual.
 
-**Fix independently of MCP, and first:** `backend/main.py` defaults to
-`allow_origins=["*"]` and exposes three unauthenticated mutating POSTs —
-`/api/db/reset`, `/api/start-fetch`, `/api/backfill-networks`. Anyone who finds the
-Railway URL can wipe the database or pin the instance against NILU's server.
+Still to do:
 
-**Update:** the three mutating POSTs are now guarded by `require_admin`
-(`X-Admin-Token` against `ADMIN_TOKEN`, failing closed). `allow_origins` still
-defaults to `*` and remains open.
+```sql
+CREATE TABLE station_series (
+    station_id   TEXT    NOT NULL,
+    variable     TEXT    NOT NULL,
+    period_start TEXT    NOT NULL,   -- ISO date
+    resolution   TEXT    NOT NULL,   -- 'annual' | 'monthly'
+    mean         REAL,
+    n_valid      INTEGER,
+    coverage     REAL,
+    PRIMARY KEY (station_id, variable, period_start, resolution)
+);
+```
 
-**Superseded — `/mcp` is unauthenticated by design.** The bearer-token vs OAuth 2.1
-choice below assumed the endpoint needed an identity. It does not: the tools are
-read-only over public EBAS data served from our own SQLite, so a token would protect
-the container, not the data. That is also how hosted open-data MCP servers generally
-run — the alternative pattern, a local stdio package with no auth at all, has the
-same property for the same reason.
+`station_records` becomes the rows where `resolution='annual'`; the migration is an
+insert-select. And `_fetch_file_mean` must **return** the binned sub-annual array
+and `valid.size` rather than collapsing to one float — the OPeNDAP round trip is the
+expensive part and we are already paying for it. That is also where real coverage
+fractions and weighted means come from.
 
-What replaced it (`mcp_server/limits.py`): a sliding-window per-address limit
-(`MCP_RATE_LIMIT_PER_MINUTE`, default 60) and a global concurrency cap
-(`MCP_MAX_CONCURRENT`, default 8) wrapped around the MCP app only, answering `429`
-and `503` with `Retry-After` and a message that tells an agent to batch rather than
-poll. Both counters are per-process: replicating the service multiplies the
-effective limit.
+## Designed but unscheduled
 
-### Authentication is a live roadmap item, not a closed question
+- **`actris://station/{id}`** — one station's whole record as an attachable
+  document. This was deferred until `get_series` existed so the query would not be
+  written twice; `get_series` now exists, so the condition has been met and the
+  resource is a thin wrapper away.
+- **`anomaly_check(period, variable)`** — needs a series plus network statistics for
+  the same period. Both now exist.
+- **`get_ranking` when rows exist but hold no usable value.** Production keeps
+  `station_records` rows for the empty current year, so this returns 0 rows with
+  `n_considered: 51` and an explanatory note rather than the `error: no_data`
+  teaching shape. Honest either way; worth deciding whether the shapes should match.
+- **QC flags** — confirm what `lev2` selection already guarantees, and whether any
+  further EBAS flag filtering is warranted.
 
-Open was the right call for the v1 spike, and it is reversible. The endpoint URL is
-now published — `.mcp.json` at the repo root and a section in the README point at
-the Railway service — which raises the discoverability that makes the decision worth
-revisiting. **Expect to add authentication** if any of these show up:
+## Conditional — authentication
 
-- **Abuse or cost.** The per-address limit handles one rude client and does nothing
-  against a distributed one. The tell is Railway CPU or request volume rising without
-  a matching rise in dashboard traffic.
-- **Per-user quota or attribution.** Today every caller is indistinguishable, so
-  there is no way to throttle one heavy user without throttling everyone, and no way
-  to know who is redistributing the data.
-- **Listing as a public connector.** Requires OAuth 2.1 with dynamic client
-  registration regardless of what we would otherwise prefer.
-- **A request from NILU/ACTRIS.** See the redistribution question below; if they want
-  the channel controlled, tokens are the mechanism.
+Deliberately unscheduled. The endpoint is open because the tools are read-only over
+public EBAS data served from our own SQLite, so a token would protect the container
+rather than the data — and the container is protected by
+`MCP_RATE_LIMIT_PER_MINUTE` (60, per address) and `MCP_MAX_CONCURRENT` (8), both
+per-process counters that replicas would multiply.
 
-The options, in ascending cost:
+**Expect to add authentication** if any of these appear:
 
-- **Shared bearer token, ASGI middleware** — roughly an hour. Compare
-  `Authorization: Bearer <secret>` against an env var in the same middleware chain as
-  `limits.py`, mirroring `require_admin`'s fail-closed pattern. Works with
-  `claude mcp add --header` and with `.mcp.json`.
-- **Bearer token via the SDK's `TokenVerifier`** — spec-correct `401` plus RFC 9728
-  discovery at `/.well-known/oauth-protected-resource/mcp`. But `token_verifier=` and
-  `auth=AuthSettings(issuer_url=...)` must travel together (the SDK raises otherwise),
-  and `issuer_url` has to name a real authorization server — so a static-token
-  verifier publishes a discovery document pointing nowhere. Plain middleware is the
-  honest shortcut until there is an actual issuer.
-- **OAuth 2.1** — what the MCP spec points at, and what a publicly listed connector
-  needs. Meaningfully more work, and mostly configuration outside this repo.
+- **Abuse or cost** — the tell is Railway CPU or request volume rising without a
+  matching rise in dashboard traffic. Per-address limits handle one rude client and
+  nothing against a distributed one.
+- **Per-user quota or attribution** — today every caller is indistinguishable.
+- **Listing as a public connector** — requires OAuth 2.1 with dynamic client
+  registration regardless of preference.
+- **A request from NILU/ACTRIS** — see the open question below.
 
-Three things to get right when it happens:
+Options, ascending: a shared bearer token in ASGI middleware beside `limits.py`
+(about an hour, mirrors `require_admin`'s fail-closed pattern); the SDK's
+`TokenVerifier`, which gives spec-correct 401s and RFC 9728 discovery but demands an
+`issuer_url` naming a real authorization server, so a static-token verifier
+advertises an issuer that does not exist; or full OAuth 2.1.
 
-1. **It is a breaking change for every published client.** The committed `.mcp.json`
-   and the README URL are now the advertised entry point; adding auth silently turns
-   them into `401`s. Bump the README, and prefer a grace period where an
-   unauthenticated call returns a teaching error naming how to get a token rather
-   than a bare `401`.
-2. **Never commit the token.** `.mcp.json` supports environment expansion — use
-   `"headers": {"Authorization": "Bearer ${ACTRIS_MCP_TOKEN}"}` so the committed file
-   stays secret-free. A literal token in that file is the actual leak, and it is a
-   public repo.
-3. **Keep the rate limits.** Auth identifies callers; it does not stop one
-   authenticated caller from hammering the container. The two controls are
-   complementary, and per-token limits are the natural upgrade once callers have
-   identities.
+Three things to get right when it happens: it is a **breaking change** for the
+published URL and `.mcp.json`, so prefer a grace period with a teaching error over a
+bare 401; the token must use `.mcp.json`'s `${VAR}` expansion, since committing a
+literal one to a public repo is the actual leak; and keep the rate limits, because
+auth identifies callers without stopping them.
 
-## Forward-compatibility for monthly
+## Out of scope — near-real-time data
 
-Four things, cheap now and annoying to retrofit:
-
-1. `resolution` as an enum parameter from day one, even with a single value.
-2. `period_start` / `period_end` as ISO dates in every response — never a bare
-   `year` integer.
-3. New table shaped for it:
-
-   ```sql
-   CREATE TABLE station_series (
-       station_id   TEXT    NOT NULL,
-       variable     TEXT    NOT NULL,
-       period_start TEXT    NOT NULL,   -- ISO date
-       resolution   TEXT    NOT NULL,   -- 'annual' | 'monthly'
-       mean         REAL,
-       n_valid      INTEGER,
-       coverage     REAL,
-       PRIMARY KEY (station_id, variable, period_start, resolution)
-   );
-   ```
-
-   The existing `station_records` becomes rows where `resolution='annual'`;
-   migration is a straight insert-select.
-4. Have `_fetch_file_mean` **return** the binned sub-annual array even while v1
-   reduces it to one number. The OPeNDAP round trip is the expensive part and
-   we're already paying for it.
-
-## Pre-flight data-quality fixes
-
-A dashboard draws a circle; an agent states the number as prose fact, possibly
-into someone's paper. That raises the bar:
-
-1. **`data_coverage` is a boolean in disguise.** `ebas_thredds.py` sets
-   `1.0 if values else 0.0`. An agent reading `data_coverage: 1.0` will report
-   full-year coverage for a station with two months of data. **Handled for v1 by
-   disclosure, not by computation:** the MCP layer never emits the field, and every
-   response's `provenance.coverage_basis` states that coverage is presence only. The
-   real figure lands with the monthly work, which re-fetches anyway.
-2. **Unweighted mean of means.** Multi-file stations use `np.mean(values)` over
-   per-file means without weighting by valid sample count. **Same treatment:**
-   `provenance.mean_method` says so in every payload. Fixing it properly requires
-   `_fetch_file_mean` to return valid-sample counts, i.e. a re-fetch.
-3. ~~**Wavelength discrepancy.**~~ **Resolved.** The constants (525 nm scattering,
-   520 nm absorption) were right and the "550 nm" labels were wrong. Both now come
-   from `backend/variables.py`, the single definition of a variable, and
-   `wavelength_nm` is in every MCP response. Note selection is nearest-neighbour
-   with no tolerance check, which the response says too.
-4. **QC flags.** Confirm what `lev2` selection already guarantees and whether any
-   further EBAS flag filtering is warranted.
-
-## Phasing
-
-**The phase list lives in `## Implementation order` above** — it superseded the
-estimates that used to sit here, which had drifted into contradicting both the tool
-count and the auth decision. What remains true of the original estimate:
-
-- **v1 — annual, remote:** the transport, the response conventions and
-  pre-population are done; the five remaining tools are the bulk of what is left.
-  (The original estimate said "authed" — superseded; the endpoint is open and
-  rate-limited, see `## Auth and hardening`.)
-- **v2 — monthly:** ~1 week, mostly wall-clock time re-running the fetch job
-  against NILU rather than development time.
-
-## Keep the core decoupled
-
-`mcp_server/tools.py` imports from `database.py` and `variables.py` — never from
-FastAPI, never from `main`, never from the route handlers. It does not even import
-the MCP SDK: registration happens in `server.py`. If we later publish a standalone stdio package, that boundary is
-what makes it a day of work instead of a rewrite.
-
-## Load on NILU
-
-The dashboard is one client with a 24h cache. Agents retry, fan out, and re-ask.
-Serve from the DB by strong preference, cap concurrency, back off on errors, and
-send an identifying User-Agent.
+`backend/nrt.py` exists and the map links to EBAS NRT, but exposing it through MCP
+is deliberately **not** part of this work. It would mix Level 1.5 — preliminary, not
+quality-assured — into a surface whose provenance block promises Level 2, and that
+needs its own thinking rather than a flag. See `docs/nrt-integration-plan.md`.
 
 ## Open questions
 
-1. **Redistribution — now the most pressing of the three.** A hosted MCP endpoint is
-   a redistribution channel for EBAS/ACTRIS data, which carries citation and
-   PI-acknowledgement expectations. The endpoint is live and its URL is published in
-   the README and `.mcp.json`, so this has moved from hypothetical to actual: worth
-   asking NILU/ACTRIS directly rather than letting them discover it. Their answer may
-   also settle the authentication question above.
-2. ~~**Public connector or private?**~~ Answered for now: **public and open**, with
-   rate limiting instead of tokens, because the data is public and read-only. Not
-   permanent — see "Authentication is a live roadmap item" above for the triggers
-   that would reopen it.
-3. **Attribution mechanics.** Injecting citation text into every tool response is
-   the only reliable way to keep it attached once an LLM paraphrases the numbers.
-   **Implemented** for `get_coverage` via `formatting.Provenance`; the open part is
-   whether a model actually carries it into prose, which only real sessions reveal.
+1. **Redistribution.** A hosted MCP endpoint is a redistribution channel for
+   EBAS/ACTRIS data, carrying citation and PI-acknowledgement expectations. The
+   endpoint is live and its URL is published in the README and `.mcp.json`, so this
+   is actual rather than hypothetical: worth asking NILU/ACTRIS directly rather than
+   letting them discover it. Their answer may also settle the authentication
+   question. **The only pending item that is not code.**
+2. **Does attribution survive paraphrase?** Every response carries the provenance
+   block, which is the only reliable way to keep citation attached once a model
+   restates the numbers. Whether a model actually carries it into prose is something
+   only real sessions reveal — and there are now six tools returning numbers to
+   observe.
 
-## Prior art checked
+---
 
-No existing ACTRIS/EBAS MCP server found as of 2026-09-10. Worth a look at
-`pyaerocom` / `pyaro` (Met Norway's EBAS readers) as an alternative data-access
-layer, though the OPeNDAP slicing here is likely faster for this narrow use case.
+# Decisions worth not relitigating
+
+| Decision | Why |
+|---|---|
+| **Annual only in v1**, monthly later | Ships in days; the forward-compat work above makes monthly additive |
+| **Remote, on the existing Railway service** | The backend already runs with a populated DB; a `/mcp` mount is close to free |
+| **Same repo, second entrypoint** | Same deploy, same container, same SQLite volume. A separate repo means a second service and either a duplicated DB or a network hop |
+| **Data only, no rendered visuals** | Token-efficient, and agents chart well from clean tabular data |
+| **Six tools, not eight** | `list_variables` duplicated definitions that already travel in every response; `list_stations` merged into `find_station`, where a blank query with filters is a browse |
+| **Open, rate-limited, not authenticated** | Read-only tools over public data; a token protects the container, not the data. Reversible — see the triggers above |
+| **One filter vocabulary** — `stations?`, `country?`, `network?`, `limit` | Three tools with three filter shapes is three chances for a model to guess wrong |
+| **Caps of 10 stations × 30 periods, truncated by whole station** | 20 × 30 is ~54 KB, comparable to the whole catalogue for one call |
+| **Search degrades, never empties** | An empty result reads as "no such station" and ends the session; candidates read as "narrow this" and continue it |
+| **No implicit "latest" period** | The newest period is reliably the emptiest |
+| **Station facts computed over the whole record** | The NRT map feature shipped with exactly this bug: a global fact derived from one period's rows |
+| **The catalogue resource does not retire `find_station`** | The resource serves clients that attach it; the tool serves those that ignore resources, and sessions where 50 KB is better spent elsewhere |
+| **No `actris://variables` or `actris://coverage`** | Both already travel inside `get_coverage`; a second copy is a second source of truth |
+| **Read-only surface** | No `start_fetch`, `reset` or `backfill-networks`: agents retry on ambiguity, and a retried reset is unrecoverable |
+| **Releases are batched** | Clients discover the surface once per connection, so each release costs every user a reconnect |
+
+**Keep the core decoupled.** `mcp_server/tools.py` imports `database.py`,
+`variables.py` and `aggregation.py` — never FastAPI, never `main`, never a route
+handler, and not even the MCP SDK: registration happens in `server.py`. If a
+standalone stdio package is ever published, that boundary is what makes it a day of
+work instead of a rewrite.
+
+**Be polite to NILU.** Their THREDDS server is a shared research resource. Serve
+from the DB by strong preference, cap concurrency, back off on errors, and send an
+identifying User-Agent. Agents retry, fan out and re-ask in a way the dashboard
+never did.
+
+## Prior art
+
+No existing ACTRIS/EBAS MCP server found as of 2026-09-10. `pyaerocom` / `pyaro`
+(Met Norway's EBAS readers) are worth a look as an alternative data-access layer,
+though the OPeNDAP slicing here is likely faster for this narrow use case.

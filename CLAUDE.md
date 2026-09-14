@@ -34,7 +34,7 @@ frontend/src/
   composables/useStationData.ts  axios instance + all TanStack Query hooks
   stores/stations.ts             Pinia UI state (year, variable, filters)
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
-docs/mcp-server-plan.md          MCP design plan + roadmap (what is not built yet)
+docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 ```
