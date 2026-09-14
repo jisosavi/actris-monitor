@@ -16,6 +16,7 @@ from variables import VARIABLES as VARIABLE_DEFS
 from mcp_server.server import build_asgi_app as build_mcp_app, mcp
 import database
 import fetch_jobs
+import nrt
 
 # Label and unit come from variables.py; this keeps the {key: {"label", "unit"}}
 # shape that the routes and fetch_jobs already read.
@@ -251,6 +252,18 @@ async def check_new_year():
 @app.get("/api/variables")
 async def list_variables():
     return [{"key": k, **{f: v[f] for f in ("label", "unit")}} for k, v in VARIABLES.items()]
+
+
+@app.get("/api/nrt/stations")
+async def get_nrt_stations():
+    """Which stations have EBAS near-real-time data for our three variables.
+
+    A proxy, because ebas-nrt.nilu.no sends no CORS headers and the browser
+    therefore cannot ask it directly. Cached an hour upstream of this handler and
+    fails soft: an NRT outage returns an empty list with `stale: true` rather than
+    an error, so the dashboard renders normally with no badges.
+    """
+    return await nrt.get_availability()
 
 
 @app.get("/api/warmup-status")

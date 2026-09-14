@@ -47,3 +47,28 @@ export const VARIABLES: Record<Variable, { label: string; unit: string; shortLab
 export const YEAR_MIN = 2000
 export const YEAR_MAX = new Date().getFullYear()
 export const YEAR_PRELOADED_MIN = 2014
+
+// ── EBAS near-real-time (NRT) ────────────────────────────────────────────────
+//
+// Served through our own backend because ebas-nrt.nilu.no sends no CORS headers.
+// Availability only — the measurements stay on NILU's site, which is what the
+// station `url` links to.
+
+export interface NrtStation {
+  name: string
+  lat: number
+  lon: number
+  variables: Variable[]
+  /** Whether this station exists in our own record, in any year. */
+  known: boolean
+  url: string
+}
+
+export interface NrtAvailability {
+  /** null when nothing has ever been fetched successfully. */
+  fetched_at: string | null
+  /** true when this is a cached or empty snapshot because the upstream failed. */
+  stale: boolean
+  source: string
+  stations: Record<string, NrtStation>
+}
