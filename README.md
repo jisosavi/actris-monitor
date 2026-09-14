@@ -65,6 +65,16 @@ The app remains fully usable for any data already in the database while a fetch 
 
 The backend fetches the EBAS THREDDS catalog (~14,000 netCDF files) and filters to Level 2 files matching the selected instrument type. For each relevant file it estimates the year-slice index range from filename dates and retrieves only that slice via OPeNDAP ASCII constraint expressions — avoiding full file downloads.
 
+### How the annual mean is computed — and what it isn't
+
+For each station, variable and year, every Level 2 file whose date range covers that year is reduced to one annual mean of its hourly values above zero, and those per-file means are then averaged **unweighted**. A file covering one month counts as much as one covering twelve.
+
+More importantly, those files are often not the same measurement. In 2019, 100 of 164 station-variable pairs were fed by more than one file, and 56 of them mixed different size cuts or matrices — Hyytiälä's 2019 scattering mean averages `pm1`, `pm10`, three no-cut files and an `aerosol_humidified` tandem nephelometer together. PM1 scattering excludes coarse particles and reads lower than PM10; humidified reads higher than dry.
+
+Two consequences worth knowing before using a number from here: comparing two stations may compare different measurands, and **a step between two years can come from a file appearing or disappearing rather than from the atmosphere**. Treat the values as a network overview, not as a record for a single site. The choice of a better rule is an open question — see [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
+
+### Station metadata
+
 Station coordinates, names, and network affiliations are read from each file's OPeNDAP `.das` attribute structure. The coordinate parser handles multiple formats found in the wild: signed decimal, unsigned decimal with inline hemisphere suffix, separate hemisphere attribute, and DMS notation.
 
 Network affiliation is determined from two sources:
