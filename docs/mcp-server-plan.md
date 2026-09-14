@@ -126,13 +126,13 @@ parameter and periods are ISO dates, so monthly slots in without breaking anythi
 
 | Tool | Purpose |
 |---|---|
-| `find_station(query?, country?, network?, has_data_for?, limit)` | Fuzzy resolution: "Hyytiälä", "SMEAR II", "Finnish forest site" → `FI0050R`. Returns candidates with code, name, country, networks, and which variables/years they cover. **Absorbed `list_stations`**: a blank query with filters is a browse. |
+| `find_station(query?, stations?, country?, network?, has_data_for?, limit)` | Resolution by name or code — "Hyytiälä", "SMEAR II" → `FI0050R` — returning candidates with code, name, country, networks, and which variables/years they cover. **Absorbed `list_stations`**: a blank query with filters is a browse. String matching only: a semantic query like "Finnish forest site" degrades to candidates rather than to nothing. |
 | ~~`list_stations(...)`~~ | **Merged into `find_station`.** |
 | ~~`list_variables()`~~ | **Dropped.** Every `get_coverage` response already carries the variable definitions, and so does the catalogue resource. |
-| `get_series(stations[], variables[], start, end, resolution)` | The workhorse. `resolution` enum is `["annual"]` in v1, gains `"monthly"` in v2. |
-| `get_ranking(period, variable, network?, country?, limit)` | Highest-to-lowest — the ranking chart as data. |
-| `get_network_stats(period_range, variable, network?)` | median / q1 / q3 / min / max / n_stations. |
-| `get_change(variable, from_period, to_period, scope)` | Computed deltas, absolute and %, rankable. Its own tool because "which stations declined most 2005→2020" across 144 stations is where agents fumble doing arithmetic by hand. |
+| `get_series(stations[], variables[], start, end, resolution)` | The workhorse. `resolution` enum is `["annual"]` in v1, gains `"monthly"` in v2. Capped at 10 stations × 30 periods, truncated by whole station. |
+| `get_ranking(period, variable, stations?, country?, network?, limit)` | Highest-to-lowest — the ranking chart as data. |
+| `get_network_stats(period_range, variable, stations?, country?, network?)` | median / q1 / q3 / min / max / n_stations. |
+| `get_change(variable, from_period, to_period, stations?, country?, network?, limit)` | Computed deltas, absolute and %, rankable. Its own tool because "which stations declined most 2005→2020" across 144 stations is where agents fumble doing arithmetic by hand. (The original `scope` parameter was never defined; these filters replace it.) |
 | `get_coverage()` | **Implemented.** The period × variable availability matrix, so an agent can check instead of discovering gaps through failures. Also returns each variable's definition (unit, instrument, wavelength, QC level) so values can be described without a second call. |
 
 `find_station` is the highest-value tool in the list. Agents never say `FI0050R`.
@@ -163,7 +163,72 @@ things the schema lacks. In fact they split three ways, and only one is blocking
 - *Valid-sample counts* genuinely need the re-fetch, because `_compute_annual_mean`
   discards `valid.size`. They ride along with the monthly work.
 
-### Phases
+### Cross-cutting decisions
+
+**Ship stages 1–3 as one release.** A client discovers the tool list once per
+connection, and `listChanged` cannot be pushed on the stateless 2026-07-28
+transport (see `CLAUDE.md`). Every release therefore costs every connected user a
+reconnect, and until they reconnect the new tools are invisible. Five tools in
+three releases means three reconnects and three windows where the surface a user
+sees does not match the documentation. The stages below are **build order, not
+release boundaries**.
+
+**Search degrades; it never returns nothing.** `find_station` does string matching
+— exact, prefix, substring, diacritic-folded, over code and name — and that
+genuinely resolves "Hyytiälä" and "SMEAR II". It cannot resolve "Finnish forest
+site", which is not a string operation, so the tool must never answer a non-empty
+query with an empty list: fall back to the closest candidates, or to a hint to
+filter by country, and let the model do the semantics with candidates in hand. An
+empty result reads as "no such station" and ends the session; a weak result reads
+as "narrow this down" and continues it.
+
+**Caps: 10 stations × 30 periods, truncated by whole station.** The earlier figure
+of 20 × 30 is ~600 rows, roughly 54 KB — comparable to the entire station catalogue
+for a single call, on top of `get_coverage`'s 19.5 KB. And truncation must drop
+whole stations, never rows: a station returned with half its periods invites
+exactly the wrong conclusion about a trend.
+
+**One filter vocabulary across every tool that selects stations**:
+`stations?`, `country?`, `network?`, `limit`. The `scope` parameter in the original
+`get_change` signature was never defined anywhere in this document — it is replaced
+by these. Three tools with three filter shapes is three chances for a model to
+guess wrong.
+
+**No implicit "latest period".** Level 2 lags publication by a year or two, so the
+newest period is reliably the emptiest:
+
+| Year | N | scattering | absorption |
+|---|---|---|---|
+| 2023 | 22 | 29 | 33 |
+| 2024 | 23 | 25 | 22 |
+| 2025 | 15 | 12 | 16 |
+| 2026 | 0 | 0 | 0 |
+
+A tool that silently defaults to the latest period returns nothing, and the model
+reports "no data for this station" when 2023 is full. Either require explicit
+periods, or resolve "latest" to the latest period **with data** and name the period
+it picked in the response.
+
+**Compute station facts over the whole record, never one period.** `has_data_for`
+and any "do we know this station" test read the catalogue across all years. This is
+not hypothetical: the NRT map feature shipped with exactly this bug — it derived a
+global fact from the selected year's stations, so in an empty year every station
+looked unknown. It was found by running the app, not by reading the code.
+
+**Tests arrive in stage 1, not after.** The response conventions — caps, gap
+markers, teaching errors, provenance — are load-bearing across five tools and fail
+silently when they regress. The SDK's in-process client (`Client(mcp)`, no HTTP, no
+server) makes a real tool-call test a few lines. Retrofitting tests onto five tools
+costs more than writing them beside the first.
+
+**Out of scope: near-real-time data.** `backend/nrt.py` now exists, and an agent
+cannot currently ask whether a station has recent measurements. Exposing that
+through MCP — a `live` flag on the catalogue resource, or a tool — is deliberately
+**not** part of this work; see `docs/nrt-integration-plan.md`. It would also mean
+mixing Level 1.5 into a surface whose provenance block promises Level 2, which
+needs its own thinking rather than a flag.
+
+### Stages
 
 1. **Make stations addressable.** Migration adding an index on
    `station_records(station_id)` — `idx_sr_lookup` leads with `year`, so every
@@ -171,17 +236,19 @@ things the schema lacks. In fact they split three ways, and only one is blocking
    `get_station_catalog()` and filters 144 stations in Python rather than adding SQL.
    Stations whose coverage is empty must come back flagged, not filtered out:
    Vielsalm is real, and an agent that cannot see it will report it does not exist.
-2. **`get_series`.** Long rows, one per (station, variable, period), capped at
-   roughly 20 stations × 30 periods — 144 × 27 is ~3,900 rows, so this is where
-   `formatting.py`'s deferred `cap()` helper gets written, with `truncated`,
-   `n_remaining` and a `hint` naming `get_ranking` or `get_change` for wide
-   questions.
+   Plus the in-process test harness, used from here on.
+2. **`get_series`.** Long rows, one per (station, variable, period), capped per the
+   decision above — 144 × 27 is ~3,900 rows, so this is where `formatting.py`'s
+   deferred `cap()` helper gets written, with `truncated`, `n_remaining` and a
+   `hint` naming `get_ranking` or `get_change` for wide questions.
 3. **The aggregate three together** — `get_network_stats` (reads `network_stats`
    directly, nearly free), `get_ranking`, `get_change`. Built in one sitting so
    `n_stations` means the same thing in all three and all three distinguish "no
    data" from a genuine zero, which 2026 makes live right now. `get_change` must
    report stations present in one period but not the other as changed-unknown rather
    than dropping them.
+
+   *Stages 1–3 release together.*
 4. **Instrument backfill, then the prompts.** An admin endpoint mirroring
    `backfill_networks`, reading only the cached catalog. Then `station_trend_report`
    and `network_comparison`, which need the instrument to flag the mid-record
@@ -190,7 +257,7 @@ things the schema lacks. In fact they split three ways, and only one is blocking
    weighted means, the `station_series` table. All need the re-fetch, so they ride
    along rather than costing a separate one.
 
-Each phase regenerates `docs/mcp-reference.md` and is accepted against a real
+Every release regenerates `docs/mcp-reference.md` and is accepted against a real
 client, not against a 200 from curl.
 
 ## Response conventions
