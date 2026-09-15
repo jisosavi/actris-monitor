@@ -312,7 +312,7 @@ onUnmounted(() => {
         <div v-if="hoveredHasNrt" class="tooltip-live">
           <span class="tooltip-live-dot" />LIVE data available
         </div>
-        <div class="tooltip-hint">Click for station details →</div>
+        <div class="tooltip-hint">Click the station for details →</div>
       </div>
     </Transition>
 

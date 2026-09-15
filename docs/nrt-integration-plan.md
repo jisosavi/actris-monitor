@@ -1,7 +1,18 @@
 # NRT Integration Plan
 
 Linking EBAS near-real-time (NRT) data to the dashboard map. Investigated and
-decided 2026-09-14. **Nothing here is implemented yet.**
+decided 2026-09-14, **implemented the same day**.
+
+Shipped: `backend/nrt.py` with the availability proxy, click-to-select with a
+station detail panel, the LIVE chip on hovered stations, and distinct markers for
+the live-data-only sites. Deliberately not shipped: rendering NRT measurements
+ourselves — the dashboard links out instead, see "Deliberately not chosen".
+
+One bug is worth remembering from the build, because it is a shape that recurs:
+the first version decided which sites were "NRT-only" by subtracting the *selected
+year's* stations, so in an empty year the entire NRT network rendered as unknown
+sites. The fix moved that judgement to the backend, which knows every station in
+every year. It was caught by running the app, not by reading the code.
 
 The goal: when a station on the map has live data at
 <https://ebas-nrt.nilu.no>, say so and offer a way through to it — without

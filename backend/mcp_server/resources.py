@@ -125,7 +125,7 @@ things about their record that no metadata field carries.
 ## Data access
 
 - EBAS: <https://ebas.nilu.no>
-- ACTRIS Data Centre: <https://dc.actris.nilu.no>
+- ACTRIS Data Portal: <https://data.actris.eu>
 
 The underlying files are Level 2 (fully quality-assured) netCDF, retrieved over
 OPeNDAP from the NILU THREDDS server.

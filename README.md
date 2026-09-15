@@ -99,6 +99,16 @@ The pydap library is not used. All OPeNDAP access goes through httpx against the
 
 The frontend uses TanStack Vue Query (1 h stale time) for data fetching and Pinia for UI state. On variable or year change the query cache is checked before making a backend request.
 
+## ACTRIS metadata API — and why this app keeps changing
+
+The [ACTRIS Data Portal](https://data.actris.eu) released v2.0.0 in August 2026 and moved to a new metadata API, `prod-actris-md.nilu.no` ([OpenAPI spec](https://prod-actris-md.nilu.no/v3/api-docs)). This project has migrated to it, replacing the superseded `dc.actris.nilu.no` Data Centre endpoint.
+
+**What we take from it today:** the facility registry — station altitude, ACTRIS labelling status, whether the site is currently registered as operating, and a link to its page in the portal. The important part is the join: each facility record carries its EBAS station code, so stations are matched on an identifier rather than on a lowercased station name, which is what the old endpoint forced and which failed silently whenever a spelling differed.
+
+**The API is still under construction, and so is this app.** ACTRIS's own development work runs to May 2027, the portal publishes [release notes](https://data.actris.eu/releases) as it goes, and not everything is stable yet — at the time of writing the metadata *search* endpoint returns server errors to every request shape we have tried, and NILU has noted that a small number of DOI and landing pages are still being fixed at the unit level. So this project deliberately adopts only the parts that work, keeps all parsing of the API in a single module (`backend/actris_md.py`) so a schema change surfaces in one place, and fails soft: if ACTRIS is unreachable the dashboard loses the facility metadata and nothing else.
+
+**Expect this to expand as the API matures.** The most interesting endpoint is dataset search, which would eventually offer DOIs, landing pages and proper variable metadata in place of parsing ~14,000 THREDDS filenames. That is not built, because it is not yet dependable. The current state, what was adopted, what was deliberately skipped, and what would change our mind are all recorded in [docs/actris-metadata-api-plan.md](docs/actris-metadata-api-plan.md).
+
 ## For AI agents (MCP)
 
 The same backend exposes its data over the [Model Context Protocol](https://modelcontextprotocol.io) at `/mcp` (Streamable HTTP), so an agent can query the network directly instead of scraping the dashboard:
@@ -131,7 +141,7 @@ Two caveats the responses state explicitly and any consumer should repeat: means
 
 **Database** — SQLite (WAL mode) via aiosqlite
 
-**Data sources** — EBAS THREDDS OPeNDAP (`thredds.nilu.no`), ACTRIS Data Centre API (`dc.actris.nilu.no`)
+**Data sources** — EBAS THREDDS OPeNDAP (`thredds.nilu.no`), ACTRIS metadata API v3 (`prod-actris-md.nilu.no`), EBAS near-real-time (`ebas-nrt.nilu.no`)
 
 ## Running Locally
 

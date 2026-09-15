@@ -26,17 +26,22 @@ Six tools, two resources, one prompt. Full schemas in `docs/mcp-reference.md`.
 | Tool | Answers |
 |---|---|
 | `get_coverage` | What periods and variables exist at all, with a station count per cell |
-| `find_station` | Name or code → EBAS station code; or browse by country, network, variable |
+| `find_station` | Name or code → EBAS station code; or browse by country, network, variable. Carries altitude, ACTRIS labelling status, registration and portal link |
 | `get_series` | Annual means for named stations over a period range |
 | `get_ranking` | Stations highest to lowest for one period |
 | `get_network_stats` | Median, quartiles and range across stations, per period |
 | `get_change` | Change between two periods per station, steepest decline first |
 
 **Resources** (the client attaches these; the model cannot):
-`actris://catalog/stations` — all 144 stations with position, networks and
-per-variable coverage as year ranges, ~50 KB, sized deliberately: year *ranges* not
+`actris://catalog/stations` — every station with position, networks, per-variable
+coverage as year ranges, and the ACTRIS facility fields (altitude, labelling status,
+registration, portal link). Roughly 50 KB, sized deliberately: year *ranges* not
 lists, coordinates at 4 dp, no measurements. `actris://citation` — attribution in a
 form a person pastes into a manuscript.
+
+The facility fields come from the ACTRIS metadata API through an hourly cache, not
+from the database: labelling status and registration are current-state facts, and
+`station_records` is keyed by year. See `docs/actris-metadata-api-plan.md`.
 
 **Prompt:** `data_availability_briefing(variable?)` — a person picks it from the
 composer menu.
