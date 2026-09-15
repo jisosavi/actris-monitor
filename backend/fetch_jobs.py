@@ -27,6 +27,7 @@ async def start_fetch_job(
     combos: list[tuple[int, str]],
     client,           # EbasThreddsClient — avoid circular import
     variables: dict,  # VARIABLES dict from main
+    force: bool = False,
 ) -> None:
     global _active_task
     if _active_task and not _active_task.done():
@@ -36,7 +37,7 @@ async def start_fetch_job(
         except (asyncio.CancelledError, Exception):
             pass
     _active_task = asyncio.create_task(
-        _run(combos, client, variables),
+        _run(combos, client, variables, force),
         name="fetch-job",
     )
 
@@ -45,10 +46,18 @@ async def _run(
     combos: list[tuple[int, str]],
     client,
     variables: dict,
+    force: bool = False,
 ) -> None:
-    coverage = await database.get_db_coverage()
-    covered = {(r["year"], r["variable"]) for r in coverage}
-    new_combos = [(y, v) for (y, v) in combos if (y, v) not in covered]
+    # `force` re-fetches combinations already present. Without it, a refresh is a
+    # no-op on a populated database — which is what "Refresh variable" used to be —
+    # and there is no way to pick up a change in how the data is selected or
+    # aggregated short of resetting the whole database.
+    if force:
+        new_combos = list(combos)
+    else:
+        coverage = await database.get_db_coverage()
+        covered = {(r["year"], r["variable"]) for r in coverage}
+        new_combos = [(y, v) for (y, v) in combos if (y, v) not in covered]
 
     skipped = len(combos) - len(new_combos)
     if skipped:

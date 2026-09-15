@@ -93,7 +93,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>EBAS QC level of the underlying files.
   <br>*Default:* lev2
 - **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: different measurands, not repeat measurements of one. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
   <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
 - **`citation`** — `string`, optional
@@ -192,7 +192,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>EBAS QC level of the underlying files.
   <br>*Default:* lev2
 - **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: different measurands, not repeat measurements of one. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
   <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
 - **`citation`** — `string`, optional
@@ -255,7 +255,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>EBAS QC level of the underlying files.
   <br>*Default:* lev2
 - **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: different measurands, not repeat measurements of one. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
   <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
 - **`citation`** — `string`, optional
@@ -339,7 +339,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>EBAS QC level of the underlying files.
   <br>*Default:* lev2
 - **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: different measurands, not repeat measurements of one. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
   <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
 - **`citation`** — `string`, optional
@@ -409,7 +409,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>EBAS QC level of the underlying files.
   <br>*Default:* lev2
 - **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: different measurands, not repeat measurements of one. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
   <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
 - **`citation`** — `string`, optional
@@ -486,7 +486,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>EBAS QC level of the underlying files.
   <br>*Default:* lev2
 - **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none) and in whether the sample was humidified: different measurands, not repeat measurements of one. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
   <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
 - **`citation`** — `string`, optional

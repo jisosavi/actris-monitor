@@ -153,6 +153,10 @@ async def get_fetch_progress():
 class FetchRequest(BaseModel):
     years: list[int]
     variables: list[str]
+    # Re-fetch combinations already in the database. Needed whenever the selection
+    # or aggregation changes — without it a refresh silently does nothing, because
+    # every requested combination is already covered.
+    force: bool = False
 
 
 @app.post("/api/start-fetch", dependencies=[Depends(require_admin)])
@@ -166,8 +170,8 @@ async def start_fetch(body: FetchRequest):
         raise HTTPException(400, "No valid year/variable combinations")
 
     combos = [(y, v) for v in valid_vars for y in sorted(valid_years, reverse=True)]
-    await fetch_jobs.start_fetch_job(combos, client, VARIABLES)
-    return {"started": True, "total": len(combos)}
+    await fetch_jobs.start_fetch_job(combos, client, VARIABLES, force=body.force)
+    return {"started": True, "total": len(combos), "force": body.force}
 
 
 @app.post("/api/db/reset", dependencies=[Depends(require_admin)])

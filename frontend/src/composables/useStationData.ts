@@ -161,8 +161,10 @@ export function useFetchProgress() {
 
 export function useStartFetch() {
   const queryClient = useQueryClient()
-  return async (years: number[], variables: string[]) => {
-    await api.post('/start-fetch', { years, variables })
+  /** `force` re-fetches combinations already in the database; without it the
+   *  backend skips every year it already has, which makes a refresh a no-op. */
+  return async (years: number[], variables: string[], force = false) => {
+    await api.post('/start-fetch', { years, variables, force })
     await queryClient.invalidateQueries({ queryKey: ['fetch-progress'] })
     await queryClient.invalidateQueries({ queryKey: ['db-status'] })
   }

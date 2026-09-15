@@ -110,7 +110,8 @@ async function refreshVariable(v: Variable) {
   busyVar.value = v
   try {
     const years = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MIN + i)
-    await startFetch(years, [v])
+    // force: a refresh exists to recompute years already stored.
+    await startFetch(years, [v], true)
   } finally {
     busyVar.value = null
   }

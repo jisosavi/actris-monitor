@@ -119,16 +119,15 @@ These matter more than the tool list.
 
    | | |
    |---|---|
-   | Station-variable pairs fed by more than one file | **100 of 164** |
-   | …mixing different size cuts or matrices | **56** |
-   | …mixing different instrument ids | **80** |
+   | Station-variable pairs fed by more than one file | **99 of 164** |
+   | …mixing different size cuts or matrices | **54** |
+   | …mixing different instrument ids | **79** |
 
-   Hyytiälä's 2019 scattering mean averages **seven** files: `pm1`, `pm10`, three
-   no-cut, and an `aerosol_humidified` tandem nephelometer. PM1 scattering excludes
-   coarse particles and is systematically lower than PM10; the humidified channel is
-   systematically higher than dry. Those are different quantities, not repeat
-   measurements of one. IT0004R absorption in 2019 averages 16 files across 2
-   matrices; FI0050R absorption, 14 across 4.
+   Hyytiälä's 2019 scattering mean averages **six** files: `pm1`, `pm10` and four
+   with no size cut. PM1 scattering excludes coarse particles and is systematically
+   lower than PM10 — different quantities, not repeat measurements of one. IT0004R
+   absorption in 2019 averages 16 files across 2 matrices; FI0050R absorption, 14
+   across 4. (Figures exclude humidified files, which are no longer selected.)
 
    Two consequences worth stating plainly. Cross-station comparison — what
    `get_ranking` and `get_change` are for — may compare a PM10 station against a PM1
@@ -239,17 +238,24 @@ It also means **monthly resolution loses its free ride**. Monthly means would ha
 been an intermediate product of step 3; without it, monthly is once again its own
 piece of work with its own re-fetch.
 
-### One piece possibly worth keeping
+### The one piece that was kept — humidified files are excluded
 
-Steps 1 and 2 are not complications — they are filters, and step 2 changes what is
-measured rather than how it is averaged. **Should humidified files still be
-dropped?** The current code includes all 24 of them, and a humidified nephelometer
-reads systematically higher than a dry one. Excluding them is a one-line change to
-file selection, though the affected station-years would need recomputing.
+Step 2 is a filter rather than a complication: it changes *what is measured*, not
+how it is averaged. Asked the narrow question, the answer was "you may drop the
+humidified files", and `_parse_catalog` now does.
 
-Worth one narrow follow-up question rather than an assumption either way, since
-"current model is ok" most directly answers the stepwise averaging, which is the
-part that was actually complicated.
+- Matched as a **substring** of the matrix field, because the catalogue spells it
+  three ways: `pm10_humidified` (10 files), `pm1_humidified` (9),
+  `aerosol_humidified` (5). Matching one exactly would have kept 19 of the 24.
+- **Scattering only** — all 24 are nephelometer files. `N` and `absorption` are
+  untouched.
+- **198 station-years change value**, spanning 1998–2019, across 16 stations.
+- **Three stations lose scattering entirely**: `CA0098R`, `GB0060R` and `MV0001R`
+  had no dry nephelometer files at all. They disappear from the scattering map,
+  which is the correct consequence of deciding their only data is not comparable.
+
+Stored values do not change until the data is re-fetched — see the `force` flag
+below, which had to be added because nothing else could trigger it.
 
 ## Then — monthly resolution
 

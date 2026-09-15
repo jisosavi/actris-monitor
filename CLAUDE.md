@@ -63,9 +63,9 @@ it is the reason the app is usable.
   a coverage fraction, despite the name.
 - **A station-year's mean can mix different measurands.** `fetch_measurements`
   averages every lev2 file overlapping the year, unweighted — and in 2019 that was
-  more than one file for 100 of 164 station-variable pairs, mixing size cuts for 56
-  of them. Hyytiälä's 2019 scattering averages pm1, pm10 and a humidified tandem
-  nephelometer together. A year-to-year step can therefore come from a file
+  more than one file for 99 of 164 station-variable pairs, mixing size cuts for 54
+  of them. Hyytiälä's 2019 scattering averages six files: pm1, pm10 and four with
+  no cut. A year-to-year step can therefore come from a file
   appearing rather than from the atmosphere. Disclosed in every MCP payload via
   `provenance.mean_method`. **Do not "fix" this.** It looks like a bug and is not:
   the question was put to Antti Hyvärinen (FMI) in September 2026, who described a
@@ -74,7 +74,15 @@ it is the reason the app is usable.
   *The aggregation question* in the plan doc before touching `fetch_measurements`.
 - The filename's field `[3]` is the instrument *class* and never varies within a
   variable — `INSTRUMENT_MAP` selects on it. The instrument id is field `[8]` and
-  the size cut is `[5]`; neither is parsed today.
+  the size cut is `[5]`.
+- **Humidified files are excluded** in `_parse_catalog`, matched as a substring of
+  field `[5]` because the catalogue spells it three ways (`pm10_humidified`,
+  `pm1_humidified`, `aerosol_humidified`). Confirmed with Antti Hyvärinen (FMI);
+  scattering only, 24 files.
+- **A fetch skips combinations already in `db_coverage` unless `force` is set.**
+  Without it a refresh is a silent no-op on a populated database, which is what
+  "Refresh variable" was until the flag existed. Any change to selection or
+  aggregation needs a forced re-fetch to reach stored values.
 - ~~`TARGET_WAVELENGTH` vs the 550 nm labels~~ — resolved: the constants (525 nm
   scattering, 520 nm absorption) were right and the labels were wrong. Both now
   come from `variables.py`, which is the single definition of a variable's label,

@@ -291,6 +291,17 @@ def _parse_catalog(xml_text: str) -> list[_FileInfo]:
         parts = name.split(".")
         if len(parts) < 4:
             continue
+        # Drop humidified measurements. A humidified nephelometer measures
+        # scattering at elevated relative humidity and reads systematically higher
+        # than a dry one, so averaging it together with dry files mixes two
+        # different quantities. Excluding it was confirmed with Antti Hyvärinen
+        # (FMI) in September 2026 — see docs/mcp-server-plan.md.
+        #
+        # Substring, not equality: the catalogue spells it three ways
+        # (pm10_humidified, pm1_humidified, aerosol_humidified) and matching only
+        # one of them would keep 19 of the 24 files this is meant to drop.
+        if "humidified" in (parts[5] if len(parts) > 5 else ""):
+            continue
         try:
             start = datetime.strptime(parts[1][:8], "%Y%m%d").date()
             end   = datetime.strptime(parts[2][:8], "%Y%m%d").date()

@@ -52,7 +52,7 @@ The dashboard links to that data rather than plotting it. NRT is Level 1.5 — p
 On first launch the database is empty. Open **Data Setup** (bottom of the left panel) to fetch data:
 
 1. **Fetch data** — select a year range and variables; already-fetched combinations are skipped automatically
-2. **Refresh variable** — re-fetch all years for a specific variable
+2. **Refresh variable** — re-fetch all years for a specific variable, including years already stored. Use this after a change to how data is selected or aggregated
 3. **Check for new year** — query the THREDDS catalog to detect data for years beyond the current maximum
 4. **Backfill network metadata** — re-fetch one `.das` file per instrument type per station to populate ACTRIS / EMEP / GAW-WDCA affiliations. Run this after a data fetch if the network filter shows stations as unknown
 5. **Reset database** — delete all stored data
@@ -69,7 +69,9 @@ The backend fetches the EBAS THREDDS catalog (~14,000 netCDF files) and filters 
 
 For each station, variable and year, every Level 2 file whose date range covers that year is reduced to one annual mean of its hourly values above zero, and those per-file means are then averaged **unweighted**. A file covering one month counts as much as one covering twelve.
 
-More importantly, those files are often not the same measurement. In 2019, 100 of 164 station-variable pairs were fed by more than one file, and 56 of them mixed different size cuts or matrices — Hyytiälä's 2019 scattering mean averages `pm1`, `pm10`, three no-cut files and an `aerosol_humidified` tandem nephelometer together. PM1 scattering excludes coarse particles and reads lower than PM10; humidified reads higher than dry.
+Humidified measurements are excluded: a humidified nephelometer reads scattering at elevated relative humidity and is systematically higher than a dry one, so it is a different quantity rather than another sample of the same one. This drops 24 files, affects scattering only, and removes three stations that had no dry nephelometer data at all.
+
+More importantly, the remaining files are still often not the same measurement. In 2019, 99 of 164 station-variable pairs were fed by more than one file, and 54 of them mixed different size cuts — Hyytiälä's 2019 scattering mean averages six files: `pm1`, `pm10` and four with no cut at all. PM1 scattering excludes coarse particles and reads systematically lower than PM10.
 
 Two consequences worth knowing before using a number from here: comparing two stations may compare different measurands, and **a step between two years can come from a file appearing or disappearing rather than from the atmosphere**. Treat the values as a network overview, not as a record for a single site.
 
