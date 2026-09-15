@@ -5,7 +5,12 @@ metadata API. This project uses the old Data Centre endpoint in exactly one plac
 so the migration is small — but it is not a straight port, because the field we
 depend on changed meaning.
 
-Investigated 2026-09-15. **Nothing here is implemented yet.**
+Investigated and **implemented 2026-09-15**.
+
+The tag diff was measured before applying, as planned: **4 stations gain the ACTRIS
+tag** — Finokalia, Zeppelin, Košetice and the Cyprus Atmospheric Observatory — and
+none loses it, so the rule was applied. It reaches stored values only when
+`backfill_networks` runs.
 
 ## This is planned work, not an incident
 

@@ -14,6 +14,7 @@ from ebas_thredds import EbasThreddsClient
 from aggregation import compute_annual_stats, compute_network_stats
 from variables import VARIABLES as VARIABLE_DEFS
 from mcp_server.server import build_asgi_app as build_mcp_app, mcp
+import actris_md
 import database
 import fetch_jobs
 import nrt
@@ -256,6 +257,19 @@ async def check_new_year():
 @app.get("/api/variables")
 async def list_variables():
     return [{"key": k, **{f: v[f] for f in ("label", "unit")}} for k, v in VARIABLES.items()]
+
+
+@app.get("/api/actris/facilities")
+async def get_actris_facilities():
+    """ACTRIS facility metadata, keyed by EBAS station code.
+
+    Altitude, labelling status, `active` and the portal URI. Served live from an
+    hourly cache rather than stored: the status and `active` are current-state
+    facts that change as stations move through certification, while
+    `station_records` is keyed by year. Fails soft — an ACTRIS outage returns an
+    empty map with `stale: true`, and costs the metadata, nothing else.
+    """
+    return await actris_md.get_facilities()
 
 
 @app.get("/api/nrt/stations")

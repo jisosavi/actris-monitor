@@ -83,13 +83,15 @@ Station coordinates, names, and network affiliations are read from each file's O
 
 Network affiliation is determined from two sources:
 - The `String project` field in each `.das` file (reflects the submission framework)
-- The [ACTRIS Data Centre](https://dc.actris.nilu.no) facility API, which is queried to supplement stations that are ACTRIS National Facilities but whose EBAS files only list other frameworks
+- The [ACTRIS metadata API v3](https://prod-actris-md.nilu.no/v3/api-docs), which supplements stations in the ACTRIS labelling process whose EBAS files only list other frameworks. It joins on the EBAS station code carried in each facility record, rather than on station name as the superseded Data Centre endpoint required
 
 For backfill, one file per unique instrument type per station is processed (up to 5) so that all submission frameworks are captured by set union.
 
 All fetched data is persisted in a **SQLite database** (WAL mode, aiosqlite). Fetch jobs run as background asyncio tasks with per-combination progress tracking stored in the database.
 
 The pydap library is not used. All OPeNDAP access goes through httpx against the ASCII endpoint, as pydap/webob returns HTTP 503 from the NILU THREDDS server.
+
+`backend/actris_md.py` reads the ACTRIS facility registry for altitude, labelling status, whether the site is currently registered as operating, and a link to its ACTRIS Data Portal page. None of it is stored: labelling status and registration change over time, while the measurement tables are keyed by year, so it is served from an hourly cache instead. Note that "not currently registered" says nothing about the data — a site can keep submitting to EBAS after leaving the registry, and its earlier measurements remain valid.
 
 `backend/nrt.py` asks the EBAS near-real-time service which stations currently publish live data, caches the answer for an hour, and fails soft — an outage serves the last good snapshot, or an empty one, never an error, so the dashboard renders normally with no badges. It exists in the backend rather than the browser because that service sends no CORS headers, which makes it unreachable from the frontend.
 

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { storeToRefs } from 'pinia'
 import axios from 'axios'
 import { useStationsStore } from '@/stores/stations'
-import type { Station, NetworkStats, NrtAvailability } from '@/types'
+import type { Station, NetworkStats, NrtAvailability, ActrisFacilities } from '@/types'
 
 
 export interface WarmupStatus {
@@ -210,6 +210,22 @@ export function useNrtStations() {
   return useQuery<NrtAvailability>({
     queryKey: ['nrt-stations'],
     queryFn: () => api.get<NrtAvailability>('/nrt/stations').then((r) => r.data),
+    staleTime: 1000 * 60 * 60,
+    retry: false,
+  })
+}
+
+/**
+ * ACTRIS facility metadata, keyed by EBAS station code.
+ *
+ * Through our backend rather than prod-actris-md.nilu.no directly: the payload is
+ * ~840 KB and wants one hourly fetch per container, not one per visitor. Fails
+ * soft, so an ACTRIS outage costs the metadata and nothing else.
+ */
+export function useActrisFacilities() {
+  return useQuery<ActrisFacilities>({
+    queryKey: ['actris-facilities'],
+    queryFn: () => api.get<ActrisFacilities>('/actris/facilities').then((r) => r.data),
     staleTime: 1000 * 60 * 60,
     retry: false,
   })

@@ -14,7 +14,7 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useStationsStore } from '@/stores/stations'
-import { useStationData, useNrtStations } from '@/composables/useStationData'
+import { useStationData, useNrtStations, useActrisFacilities } from '@/composables/useStationData'
 import { VARIABLES } from '@/types'
 import type { Variable } from '@/types'
 
@@ -22,6 +22,7 @@ const store = useStationsStore()
 const { selectedStationId, selectedVariable, selectedYear } = storeToRefs(store)
 const { stationsQuery } = useStationData()
 const { data: nrt } = useNrtStations()
+const { data: actris } = useActrisFacilities()
 
 const station = computed(() =>
   (stationsQuery.data.value ?? []).find((s) => s.id === selectedStationId.value) ?? null,
@@ -37,6 +38,11 @@ const lat = computed(() => station.value?.lat ?? nrtEntry.value?.lat ?? null)
 const lon = computed(() => station.value?.lon ?? nrtEntry.value?.lon ?? null)
 
 const isNrtOnly = computed(() => station.value === null && nrtEntry.value !== null)
+
+/** ACTRIS facility registry entry. Null when the station has no record there. */
+const facility = computed(() =>
+  selectedStationId.value ? (actris.value?.facilities?.[selectedStationId.value] ?? null) : null,
+)
 
 const nrtVariableLabels = computed(() =>
   (nrtEntry.value?.variables ?? []).map((v: Variable) => VARIABLES[v]?.shortLabel ?? v),
@@ -96,6 +102,29 @@ function coord(value: number, positive: string, negative: string) {
       <div class="detail-none">
         Not in this dashboard’s Level 2 record — it appears here only because it reports live data.
       </div>
+    </div>
+
+    <!-- ACTRIS facility registry -->
+    <div v-if="facility" class="detail-block">
+      <div class="detail-label">ACTRIS facility</div>
+      <div v-if="facility.altitude_m !== null" class="detail-alt">
+        {{ Math.round(facility.altitude_m) }} m above sea level
+      </div>
+      <div v-if="facility.labelling_status" class="detail-status">
+        Labelling: <span class="detail-status-val">{{ facility.labelling_status }}</span>
+      </div>
+      <div v-if="!facility.active" class="detail-inactive">
+        Not currently registered as operating. This describes the ACTRIS registry, not
+        the data — measurements already collected remain valid, and some unregistered
+        stations still report.
+      </div>
+      <a
+        v-if="facility.uri"
+        class="detail-link detail-link--actris"
+        :href="facility.uri"
+        target="_blank"
+        rel="noopener noreferrer"
+      >Open in the ACTRIS Data Portal ↗</a>
     </div>
 
     <!-- Live data -->
@@ -196,6 +225,13 @@ function coord(value: number, positive: string, negative: string) {
 .dn { color: var(--positive); font-size: 15px; }
 .detail-none { font-size: 11px; color: var(--text-muted); font-style: italic; line-height: 1.5; }
 .detail-networks { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+
+.detail-alt { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+.detail-status { font-size: 12px; color: var(--text); margin-top: 3px; }
+.detail-status-val { font-weight: 600; }
+.detail-inactive { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 7px; }
+.detail-link--actris { color: var(--accent); }
+.detail-link--actris:focus-visible { outline: 2px solid var(--accent); }
 
 .detail-label--live { display: flex; align-items: center; gap: 6px; color: #0b7f96; }
 .live-dot {
