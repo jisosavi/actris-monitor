@@ -78,7 +78,7 @@ field — *data submitted under the ACTRIS framework* — while the status descr
 | What the ACTRIS network filter means | **Unchanged.** Keep tagging from the EBAS `project` field, so the map behaves as users expect. Carry the labelling status alongside as station metadata |
 | Scope | **Facilities only**, joined by `ebas_station_code` |
 | Extra fields to adopt | Facility **URI**, **labelling status**, **altitude**, and **`active`** — shown as context, never as a filter |
-| Fields deliberately skipped as *filters* | WMO region, contact organisation, and `active` — but see below: `active` is worth showing, just never worth filtering on |
+| Fields deliberately skipped | WMO region and contact organisation — neither answers a question this dashboard asks |
 
 ## Which stations are active changes over time
 
