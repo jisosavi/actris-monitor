@@ -34,7 +34,7 @@ The dashboard renders a full-screen map (MapLibre GL + deck.gl ScatterplotLayer)
 
 A control panel provides:
 - Year selection and variable switching
-- Network filter (ACTRIS / EMEP / GAW-WDCA) — stations are tagged by cross-referencing EBAS `.das` project fields and the ACTRIS Data Centre facility list
+- Network filter (ACTRIS / EMEP / GAW-WDCA) — stations are tagged by cross-referencing EBAS `.das` project fields with the ACTRIS facility registry, matched on EBAS station code
 - Map colour mode toggle (absolute vs. year-on-year change)
 
 A station ranking chart lists all stations from highest to lowest concentration. Network statistics cards show median, IQR, minimum, and maximum — each with a year-on-year percentage and absolute change indicator.

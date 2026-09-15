@@ -18,9 +18,9 @@ none loses it, so the rule was applied. It reaches stored values only when
 old API is expected to be retired eventually, and moving now buys a better join and
 better metadata rather than averting an outage.
 
-## What we use it for today
+## What the old endpoint was used for, before this migration
 
-One call, in `EbasThreddsClient._get_actris_dc_names`: fetch the Data Centre's
+One call, in `EbasThreddsClient._get_actris_dc_names`: fetch the old Data Centre's
 facility list and keep the names where `is_actris_nf` is `true`, lowercased. That
 set is then used in `_fetch_station_meta_from_das` to add `ACTRIS` to a station's
 networks when the EBAS `project` field did not already say so.
