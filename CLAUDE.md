@@ -78,7 +78,14 @@ it is the reason the app is usable.
 - **Humidified files are excluded** in `_parse_catalog`, matched as a substring of
   field `[5]` because the catalogue spells it three ways (`pm10_humidified`,
   `pm1_humidified`, `aerosol_humidified`). Confirmed with Antti Hyvärinen (FMI);
-  scattering only, 24 files.
+  scattering only, 24 files. It changed no values — those files were already
+  failing silently, see below — so the exclusion makes an accident deliberate.
+- **A file whose netCDF lacks the exact `NC_VAR` name is silently skipped.**
+  `_compute_annual_mean` ends in a bare `except Exception: return None`, so a file
+  storing `aerosol_light_scattering_coefficient` rather than
+  `..._amean` contributes nothing and logs nothing. In a 21-file sample, 1 was
+  affected. This is how humidified files were already being dropped before anyone
+  decided to drop them, and it may be discarding legitimate data elsewhere.
 - **A fetch skips combinations already in `db_coverage` unless `force` is set.**
   Without it a refresh is a silent no-op on a populated database, which is what
   "Refresh variable" was until the flag existed. Any change to selection or

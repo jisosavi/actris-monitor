@@ -249,13 +249,23 @@ humidified files", and `_parse_catalog` now does.
   `aerosol_humidified` (5). Matching one exactly would have kept 19 of the 24.
 - **Scattering only** — all 24 are nephelometer files. `N` and `absorption` are
   untouched.
-- **198 station-years change value**, spanning 1998–2019, across 16 stations.
-- **Three stations lose scattering entirely**: `CA0098R`, `GB0060R` and `MV0001R`
-  had no dry nephelometer files at all. They disappear from the scattering map,
-  which is the correct consequence of deciding their only data is not comparable.
+**It changed no values.** The forced re-fetch of all 27 scattering years was run on
+2026-09-15 and every station's mean came back identical. The reason is worth knowing:
+**humidified files were already being skipped by accident.** They do not contain
+`aerosol_light_scattering_coefficient_amean` — the variable name `NC_VAR` requests —
+but `aerosol_light_scattering_coefficient` alongside enhancement factors. The
+OPeNDAP request therefore failed, `_compute_annual_mean`'s bare `except Exception:
+return None` swallowed it, and the file contributed nothing.
 
-Stored values do not change until the data is re-fetched — see the `force` flag
-below, which had to be added because nothing else could trigger it.
+So this change converts an accident into a decision. That is worth having — the
+exclusion no longer depends on a coincidence of variable naming, it is documented,
+and it stops issuing OPeNDAP requests that can only fail — but nobody should expect
+the numbers to move. By the same token `CA0098R`, `GB0060R` and `MV0001R` had no
+scattering values before either; they were already absent rather than newly removed.
+
+The re-fetch was still worth running: it picked up EBAS data published since the
+original fetch — three stations appeared in 2019 (`FI0038U`, `FI0063R`, `PL0008U`)
+and `US3446C` gained a 2019 value.
 
 ## Then — monthly resolution
 

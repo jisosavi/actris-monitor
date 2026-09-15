@@ -69,7 +69,7 @@ The backend fetches the EBAS THREDDS catalog (~14,000 netCDF files) and filters 
 
 For each station, variable and year, every Level 2 file whose date range covers that year is reduced to one annual mean of its hourly values above zero, and those per-file means are then averaged **unweighted**. A file covering one month counts as much as one covering twelve.
 
-Humidified measurements are excluded: a humidified nephelometer reads scattering at elevated relative humidity and is systematically higher than a dry one, so it is a different quantity rather than another sample of the same one. This drops 24 files, affects scattering only, and removes three stations that had no dry nephelometer data at all.
+Humidified measurements are excluded: a humidified nephelometer reads scattering at elevated relative humidity and is systematically higher than a dry one, so it is a different quantity rather than another sample of the same one. This drops 24 nephelometer files. It changed no published values, because those files were already being skipped — they do not carry the variable name this pipeline requests — but the exclusion is now deliberate and documented rather than accidental.
 
 More importantly, the remaining files are still often not the same measurement. In 2019, 99 of 164 station-variable pairs were fed by more than one file, and 54 of them mixed different size cuts — Hyytiälä's 2019 scattering mean averages six files: `pm1`, `pm10` and four with no cut at all. PM1 scattering excludes coarse particles and reads systematically lower than PM10.
 
