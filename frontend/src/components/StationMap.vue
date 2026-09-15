@@ -228,6 +228,10 @@ onMounted(() => {
   overlay.value = new MapboxOverlay({
     interleaved: false,
     layers: [],
+    // Without this the cursor stays a grab hand over every marker, and nothing
+    // suggests the stations can be clicked at all.
+    getCursor: ({ isHovering, isDragging }) =>
+      isDragging ? 'grabbing' : isHovering ? 'pointer' : 'grab',
     // Fires only when no layer handled the click — a layer's onClick returns true
     // and stops here — so this is the "clicked empty map" case.
     onClick: (info) => {
@@ -306,8 +310,9 @@ onUnmounted(() => {
           Coverage {{ (hoveredStation.data_coverage * 100).toFixed(0) }}%
         </div>
         <div v-if="hoveredHasNrt" class="tooltip-live">
-          <span class="tooltip-live-dot" />LIVE data — click to open
+          <span class="tooltip-live-dot" />LIVE data available
         </div>
+        <div class="tooltip-hint">Click for station details →</div>
       </div>
     </Transition>
 
@@ -403,6 +408,15 @@ onUnmounted(() => {
   color: #0b7f96;
 }
 .tooltip-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #0e9db8; }
+.tooltip-hint {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
 
 .legend-nrt {
   display: flex;
