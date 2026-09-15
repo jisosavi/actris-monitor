@@ -22,6 +22,8 @@ backend/          FastAPI app
   database.py     all SQLite reads/writes go through here
   aggregation.py  station records → annual stats / network stats
   fetch_jobs.py   single background fetch job, progress tracked in DB
+  actris_md.py    ACTRIS metadata API v3 — facility registry, hourly cache, never stored
+  nrt.py          EBAS near-real-time availability, hourly cache, never stored
   mcp_server/     MCP endpoint at /mcp
     server.py       the MCPServer instance, registration, transport security
     tools.py        tools (model calls these)
@@ -116,6 +118,14 @@ them non-simple and costs a CORS preflight round trip on every read.
 `ALLOWED_ORIGIN` should be set to the real frontend origin in production. Note
 CORS only constrains browsers; it does nothing against `curl`, which is why the
 token is the actual protection.
+
+**Current-state facts are cached, never stored.** ACTRIS labelling status, facility
+`active`, and NRT availability all change over time, while `station_records` is
+keyed by year — writing them there would assert a station was "initially accepted"
+*in 2011*. `actris_md.py` and `nrt.py` both serve them from an hourly cache that
+fails soft. The ACTRIS network tag joins on the **EBAS station code** from the
+facility record, not on station name as the superseded `dc.actris.nilu.no` list
+forced; it only takes effect when `backfill_networks` runs.
 
 **Be polite to NILU.** Their THREDDS server is a shared research resource. Results
 are cached 24 h and concurrency is capped at `_MAX_CONCURRENT = 20`. Don't raise

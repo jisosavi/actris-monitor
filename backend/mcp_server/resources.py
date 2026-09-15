@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import actris_md
 import database
 from variables import VARIABLES
 
@@ -39,9 +40,11 @@ async def station_catalog() -> dict:
     is the cheaper route.
     """
     rows = await database.get_station_catalog()
+    facilities = (await actris_md.get_facilities())["facilities"]
 
     stations = []
     for row in rows:
+        facility = facilities.get(row["id"]) or {}
         stations.append(
             {
                 "id":       row["id"],
@@ -53,6 +56,10 @@ async def station_catalog() -> dict:
                 "lat":      round(row["lat"], 4),
                 "lon":      round(row["lon"], 4),
                 "networks": [n for n in row["networks"].split(",") if n],
+                "altitude_m": facility.get("altitude_m"),
+                "actris_labelling": facility.get("labelling_status"),
+                "actris_active": facility.get("active"),
+                "actris_url": facility.get("uri"),
                 "coverage": {
                     variable: compress_years(years)
                     for variable, years in sorted(row["years"].items())
@@ -76,6 +83,13 @@ async def station_catalog() -> dict:
                 "Name, position and networks are taken from the station's most recent "
                 "year. Station metadata is stored per station-year and earlier years may "
                 "differ."
+            ),
+            "actris_fields": (
+                "altitude_m, actris_labelling, actris_active and actris_url come from the "
+                "ACTRIS facility registry and describe the station NOW, not during any "
+                "period below. actris_active is about registration, not measurement: an "
+                "inactive station's historical values are valid, and some inactive "
+                "stations still report. Null means no ACTRIS facility record."
             ),
             "mean_method": MEAN_METHOD,
             "source": SOURCE,

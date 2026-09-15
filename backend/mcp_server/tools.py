@@ -30,6 +30,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+import actris_md
 import database
 from aggregation import compute_network_stats
 from variables import VARIABLES
@@ -199,6 +200,19 @@ class StationMatch(BaseModel):
         description="Variable → years holding a usable mean, as ranges ('2000-2019,2021-2024'). Empty means the station is in the record but holds no usable value for any variable."
     )
     matched_on: str = Field(description="code, name, filter, or approximate.")
+    altitude_m: float | None = Field(
+        default=None,
+        description="Metres above sea level, from the ACTRIS facility registry. A mountain site and a city site are not comparable.",
+    )
+    actris_labelling: str | None = Field(
+        default=None,
+        description="ACTRIS National Facility certification status: labelled, initially accepted, labelling opened/planned/application submitted, or not labelled. Current state, not a property of any period. Null when the station has no ACTRIS facility record.",
+    )
+    actris_active: bool | None = Field(
+        default=None,
+        description="Whether the facility is currently registered as operating. NOT a statement about data: a site can keep submitting to EBAS after leaving the registry, and an inactive station's historical measurements remain valid.",
+    )
+    actris_url: str | None = Field(default=None, description="The station's page in the ACTRIS Data Portal.")
 
 
 class FindStationResult(BaseModel):
@@ -253,7 +267,10 @@ async def find_station(
     note: str | None = None
     hint: str | None = None
 
+    facilities = (await actris_md.get_facilities())["facilities"]
+
     def to_match(row: dict, how: str) -> StationMatch:
+        facility = facilities.get(row["id"]) or {}
         return StationMatch(
             id=row["id"],
             name=row["name"],
@@ -263,6 +280,10 @@ async def find_station(
             networks=[n for n in row["networks"].split(",") if n],
             coverage={var: compress_years(years) for var, years in sorted(row["years"].items())},
             matched_on=how,
+            altitude_m=facility.get("altitude_m"),
+            actris_labelling=facility.get("labelling_status"),
+            actris_active=facility.get("active"),
+            actris_url=facility.get("uri"),
         )
 
     if query:

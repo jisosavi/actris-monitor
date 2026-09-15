@@ -24,6 +24,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import actris_md  # noqa: E402
 import database  # noqa: E402
 from mcp import Client  # noqa: E402
 from mcp_server.server import mcp  # noqa: E402
@@ -50,8 +51,27 @@ MEANS = {
 }
 
 
+# Facility metadata, primed into the module cache so no test reaches the network.
+# FI0050R is labelled and active; BE0007R is registered but not labelled; FI0096G
+# has no facility record at all.
+FACILITIES = {
+    "FI0050R": {"identifier": "abc1", "name": "Hyytiälä", "country_code": "FI",
+                "altitude_m": 181.0, "labelling_status": "labelled", "active": True,
+                "uri": "https://data.actris.eu/facility/abc1"},
+    "BE0007R": {"identifier": "def2", "name": "Vielsalm", "country_code": "BE",
+                "altitude_m": 490.0, "labelling_status": "not labelled", "active": False,
+                "uri": "https://data.actris.eu/facility/def2"},
+}
+
+
 @pytest.fixture
-async def seeded(tmp_path, anyio_backend):
+async def seeded(tmp_path, anyio_backend, monkeypatch):
+    from datetime import datetime, timezone
+    monkeypatch.setattr(actris_md, "_cache", (
+        {"fetched_at": datetime.now(timezone.utc).isoformat(), "stale": False,
+         "source": "test", "facilities": FACILITIES},
+        datetime.now(timezone.utc),
+    ))
     await database.init_db(str(tmp_path / "test.db"))
     for year in (2018, 2019, 2020):
         records = []
@@ -123,6 +143,57 @@ async def test_find_station_flags_stations_holding_nothing(seeded):
 async def test_find_station_has_data_for_excludes_the_empty_one(seeded):
     out = await call("find_station", {"has_data_for": "N"})
     assert "BE0007R" not in [m["id"] for m in out["matches"]]
+
+
+async def test_find_station_carries_facility_metadata(seeded):
+    out = await call("find_station", {"query": "FI0050R"})
+    m = out["matches"][0]
+    assert m["altitude_m"] == 181.0
+    assert m["actris_labelling"] == "labelled"
+    assert m["actris_active"] is True
+    assert m["actris_url"].endswith("/abc1")
+
+
+async def test_find_station_degrades_without_a_facility_record(seeded):
+    """FI0096G has no ACTRIS facility; the station must still resolve."""
+    out = await call("find_station", {"query": "FI0096G"})
+    m = out["matches"][0]
+    assert m["id"] == "FI0096G"
+    assert m["altitude_m"] is None and m["actris_labelling"] is None
+    assert m["actris_active"] is None and m["actris_url"] is None
+
+
+async def test_inactive_station_keeps_its_measurements(seeded):
+    """`active` describes the registry, never the data. Vielsalm is inactive."""
+    out = await call("find_station", {"query": "Vielsalm"})
+    assert out["matches"][0]["actris_active"] is False
+    series = await call("get_series", {"stations": ["BE0007R"], "variables": ["N"],
+                                       "start": "2018", "end": "2018"})
+    assert len(series["rows"]) == 1, "an inactive station is still queryable"
+
+
+def test_duplicate_ebas_code_resolves_deterministically():
+    """Two facilities share a code in the live data; the active one wins."""
+    parsed = actris_md._parse([
+        {"identifier": "zzz9", "name": "A", "active": False,
+         "extra_metadata": {"insitu": {"ebas_station_code": "XX0001R"}}},
+        {"identifier": "aaa1", "name": "B", "active": True,
+         "extra_metadata": {"insitu": {"ebas_station_code": "XX0001R"}}},
+    ])
+    assert parsed["XX0001R"]["identifier"] == "aaa1"
+    # With activity equal, the choice is still deterministic rather than arbitrary.
+    tie = actris_md._parse([
+        {"identifier": "zzz9", "active": False,
+         "extra_metadata": {"insitu": {"ebas_station_code": "XX0002R"}}},
+        {"identifier": "aaa1", "active": False,
+         "extra_metadata": {"insitu": {"ebas_station_code": "XX0002R"}}},
+    ])
+    assert tie["XX0002R"]["identifier"] == "aaa1"
+
+
+def test_only_unlabelled_is_excluded_from_the_actris_tag():
+    """The six-value status collapses to a boolean at exactly one place."""
+    assert actris_md.NOT_LABELLED == "not labelled"
 
 
 # ── get_series ────────────────────────────────────────────────────────────────

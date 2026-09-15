@@ -112,6 +112,14 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
   <br>Variable → years holding a usable mean, as ranges ('2000-2019,2021-2024'). Empty means the station is in the record but holds no usable value for any variable.
 - **`matched_on`** — `string`, **required**
   <br>code, name, filter, or approximate.
+- **`altitude_m`** — `number` | `null`, optional
+  <br>Metres above sea level, from the ACTRIS facility registry. A mountain site and a city site are not comparable.
+- **`actris_labelling`** — `string` | `null`, optional
+  <br>ACTRIS National Facility certification status: labelled, initially accepted, labelling opened/planned/application submitted, or not labelled. Current state, not a property of any period. Null when the station has no ACTRIS facility record.
+- **`actris_active`** — `boolean` | `null`, optional
+  <br>Whether the facility is currently registered as operating. NOT a statement about data: a site can keep submitting to EBAS after leaving the registry, and an inactive station's historical measurements remain valid.
+- **`actris_url`** — `string` | `null`, optional
+  <br>The station's page in the ACTRIS Data Portal.
 
 ### `get_change` — Change between periods
 
