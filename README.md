@@ -73,7 +73,7 @@ More importantly, those files are often not the same measurement. In 2019, 100 o
 
 Two consequences worth knowing before using a number from here: comparing two stations may compare different measurands, and **a step between two years can come from a file appearing or disappearing rather than from the atmosphere**. Treat the values as a network overview, not as a record for a single site.
 
-**This method is being replaced.** Asked how a station's annual mean should be built, Antti Hyvärinen (FMI) specified: disregard size cuts, omit humidified measurements, and average stepwise — hourly to daily, daily to monthly, monthly to annual — requiring 75% coverage at each step and leaving the step blank rather than approximating when it falls short. That removes both caveats above, at the cost of a full re-fetch, and it will change published values: station-years that are thin today will become blank instead of yielding a number. See [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
+This is deliberate rather than an oversight. Asked how a station's annual mean should be built, Antti Hyvärinen (FMI) described a stricter method — stepwise hourly-to-daily-to-monthly-to-annual averaging with a 75% coverage requirement at each step — and then concluded that the current model is fine and needn't be made more complicated for a network overview of this kind. So the caveats above are permanent properties of these numbers, not a repair waiting to happen. The exchange is recorded in [docs/mcp-server-plan.md](docs/mcp-server-plan.md).
 
 ### Station metadata
 

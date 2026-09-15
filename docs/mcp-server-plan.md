@@ -137,12 +137,11 @@ These matter more than the tool list.
 
    `provenance.mean_method` now says all of this, in every payload.
 
-**Both are superseded by a specified replacement.** See *The agreed aggregation
-method* below: hourly → daily → monthly → annual, 75% coverage required at each
-step, humidified data excluded, size cuts disregarded. It fixes limitation 1 by
-computing coverage for real and limitation 2 by removing the per-file averaging
-step. Until it is implemented, the disclosures above remain accurate and stay in
-every payload.
+**Both are permanent.** A rigorous replacement was specified and then set aside as
+more than this dashboard needs — see *The aggregation question* below. Limitation 1
+would still be fixed by the monthly re-fetch, which computes coverage properly as a
+side effect. Limitation 2 stays, so the disclosures above are not a stopgap: they
+are how these numbers are described, indefinitely.
 
 ## Tests
 
@@ -190,18 +189,27 @@ what the prompts need:
   statistics, with "no data" kept distinct from a genuine zero, and a note where the
   stations being compared do not share a size cut.
 
-**The decision this deferred — answered, and then specified.** See
-**The agreed aggregation method** below: the question went to Antti Hyvärinen (FMI)
-in September 2026, and the answer replaces the current calculation rather than
-endorsing it. The composition backfill described here is superseded by it — there is
-no point labelling the composition of a mean that is about to be computed a
-different way.
+**The decision this deferred — now closed.** See *The aggregation question* below:
+the current calculation stands. That makes the composition backfill described here
+the *only* mitigation available to a trend report, rather than a stopgap before a
+better number arrives — so it is worth more than when it was first written down.
 
-## The agreed aggregation method
+## The aggregation question — asked, answered, closed
 
-Specified by Antti Hyvärinen (FMI), September 2026, in answer to "what should a
-station's annual mean be made of?". It **supersedes an earlier, briefer reply of
-"keep the calculation as it is now"**, and it replaces what the code does today.
+Put to Antti Hyvärinen (FMI) in September 2026: should a station-year keep averaging
+every overlapping Level 2 file, prefer a canonical size cut, or split by matrix?
+
+The exchange ran in three parts, and the **conclusion is to keep the current
+calculation unchanged**: *"current model is ok, no need to make more complicated."*
+He first replied "keep the calculation as it is now", then — asked for what a
+rigorous method would look like — specified the one below, and then confirmed it is
+more than this dashboard needs.
+
+**Do not implement the method below.** It is recorded because it is the considered
+answer to "what would be correct", and because anyone who later finds the mixing
+problem independently deserves to find this rather than reinvent it.
+
+### The rigorous method, considered and set aside
 
 1. **Disregard size cuts.** `pm1`, `pm10`, `pm25` and no-cut files are all usable.
    Do not filter on the matrix and do not split them into separate series.
@@ -213,53 +221,43 @@ station's annual mean be made of?". It **supersedes an earlier, briefer reply of
    rather than approximate it when coverage falls short:** hourly → daily, daily →
    monthly, monthly → annual.
 
-### What this changes
+### Why it was set aside, and what that costs
 
-**It is a different number.** Today a station-year is the unweighted mean of
-per-file annual means over whatever hours exist. Under this method a station-year is
-the mean of its months, each the mean of its days, each the mean of its hours — and
-any level failing 75% is blank. Published values will move, and **many station-years
-will disappear**, because a station with three months of data currently yields a
-number and under this rule yields nothing. That is the intent: the blank is the
-honest answer.
+It would have been a different number, not a refinement: a station-year becomes the
+mean of its months, each the mean of its days, and any level under 75% goes blank.
+**Many thin station-years would disappear** — a station with three months of data
+yields a value today and would yield nothing. It needs the full re-fetch, though no
+extra fetching: `_compute_annual_mean` already downloads the hourly slice and
+discards it, so the data has been passing through all along.
 
-**It requires the re-fetch, but not extra fetching.** `_compute_annual_mean` already
-downloads the hourly slice and collapses it to one float immediately. The hourly
-data has been passing through the process all along and being discarded. The
-re-fetch is needed only because none of it was stored.
+The judgement is that this is more rigour than a network-overview dashboard needs.
+Accepting that means accepting what stays: the two known limitations above are
+permanent features of the published numbers, and `provenance.mean_method` carries
+them into every response, which is now the whole mitigation rather than a stopgap.
 
-**It makes monthly nearly free.** Monthly means are an intermediate product of step
-3, not a separate feature. "Fix the aggregation" and "add monthly resolution" are now
-one job, and `station_series` is the table both need.
+It also means **monthly resolution loses its free ride**. Monthly means would have
+been an intermediate product of step 3; without it, monthly is once again its own
+piece of work with its own re-fetch.
 
-**It fixes both known limitations.** Coverage stops being a boolean in disguise —
-the 75% test computes it for real at each level — and the unweighted mean of
-per-file means disappears along with the per-file step.
+### One piece possibly worth keeping
 
-### Before implementing, three things to confirm
+Steps 1 and 2 are not complications — they are filters, and step 2 changes what is
+measured rather than how it is averaged. **Should humidified files still be
+dropped?** The current code includes all 24 of them, and a humidified nephelometer
+reads systematically higher than a dry one. Excluding them is a one-line change to
+file selection, though the affected station-years would need recomputing.
 
-None is a blocker for planning, all three change results:
+Worth one narrow follow-up question rather than an assumption either way, since
+"current model is ok" most directly answers the stepwise averaging, which is the
+part that was actually complicated.
 
-1. **Overlapping files.** With size cuts disregarded, a station can have `pm1` and
-   `pm10` files covering the same hour. Average them per timestamp into one hourly
-   series, or keep the highest-coverage file? Hyytiälä 2019 has seven overlapping
-   scattering files.
-2. **Coverage denominators.** Presumably 18 of 24 hours for a day, 75% of that
-   month's calendar days, and 9 of 12 months for a year — worth confirming, since it
-   decides how much of the record survives.
-3. **Non-hourly files.** 914 of 924 Level 2 files for our instruments are `1h`; the
-   rest are `3h` (5), `6h` (3), `12h` (1) and `2mn` (1). Their expected-sample count
-   per day differs, and `_estimate_year_indices` currently assumes hourly spacing for
-   all of them — a pre-existing slicing bug for those ten files, which this work
-   should either fix or exclude.
-
-## Then — monthly resolution, which is now the same job
+## Then — monthly resolution
 
 The large one, and mostly wall-clock rather than development time: it re-runs the
-fetch against NILU. It also fixes both known limitations, which is why they wait for
-it — and why the composition decision above should be made before it starts, not
-after. The re-fetch is the expensive event; everything that needs one should ride
-the same pass.
+fetch against NILU. With the aggregation question closed, it no longer carries the
+two known limitations with it — those are now permanent — so its only job is
+monthly resolution itself. The re-fetch is still the expensive event, so anything
+else needing one should ride the same pass.
 
 Four things are already in place so this stays additive: `resolution` is an enum
 parameter, every response carries ISO `period_start`/`period_end` rather than a bare
