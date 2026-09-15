@@ -77,8 +77,47 @@ field — *data submitted under the ACTRIS framework* — while the status descr
 |---|---|
 | What the ACTRIS network filter means | **Unchanged.** Keep tagging from the EBAS `project` field, so the map behaves as users expect. Carry the labelling status alongside as station metadata |
 | Scope | **Facilities only**, joined by `ebas_station_code` |
-| Extra fields to adopt | Facility **URI**, **labelling status**, **altitude** |
-| Fields deliberately skipped | WMO region, contact organisation, and `active` — only 50 of our 144 are `active: true`, so filtering on it would hide most of the record |
+| Extra fields to adopt | Facility **URI**, **labelling status**, **altitude**, and **`active`** — shown as context, never as a filter |
+| Fields deliberately skipped as *filters* | WMO region, contact organisation, and `active` — but see below: `active` is worth showing, just never worth filtering on |
+
+## Which stations are active changes over time
+
+The network is not fixed: stations open, close, and are added to or removed from
+the ACTRIS registry, and the count will keep moving. Checked 2026-09-15, only
+**50 of our 144** matched facilities are `active: true` — and that flag tracks
+something real. Splitting our own stations by the last year for which we hold data:
+
+| Last year with data | `active: true` (45) | `active: false` (48) |
+|---|---|---|
+| 2022 or later | 38 | 17 |
+| 2015–2021 | 7 | 18 |
+| before 2015 | **0** | 13 |
+
+No active station's record stops before 2015. Three consequences for this design:
+
+**It confirms the no-storage decision.** `active` and the labelling status are
+current-state facts that change, so a table keyed by year is the wrong home for
+them. The cached read-through gives the current answer every time, and nothing goes
+stale.
+
+**Every count here is a snapshot, not a fact.** "50 of 144" was true on
+2026-09-15 and will not stay true. Figures like it belong in a dated line, never in
+a tool description or a UI label.
+
+**Never filter on it; use it to explain.** A station inactive today still has valid
+measurements from 2005, and hiding it would delete a fifth of the record. The value
+is the opposite: it answers "why does this series stop in 2014?", which today is
+indistinguishable from "we never fetched it". That is exactly the gap the project's
+absence-is-stated convention exists to close, so the natural home is the station
+detail panel and `find_station` — not a filter.
+
+Two cautions. The 17 inactive stations with data through 2022 or later show the flag
+describes the **ACTRIS facility registry**, not EBAS reporting: a site can still
+submit data after leaving the registry, so "inactive" must never be rendered as "no
+longer measuring". And our own record already carries an independent, historical
+signal — the last period with data — which is a fact about the data rather than
+about the registry. Showing both, and letting them disagree visibly, is more honest
+than reconciling them.
 
 ## Design
 
@@ -122,9 +161,10 @@ if it moves many stations, bring it back as a decision rather than shipping it.
 
 ### Surfaces
 
-- **Frontend** — the station detail panel gains altitude, the labelling status, and
-  a link to the ACTRIS portal facility page, beside the existing near-real-time
-  link. A new `useActrisFacilities()` query mirroring `useNrtStations()`.
+- **Frontend** — the station detail panel gains altitude, the labelling status, a
+  link to the ACTRIS portal facility page, and the registry status paired with the
+  last period we hold data for, so a series that stops has a stated reason. A new
+  `useActrisFacilities()` query mirroring `useNrtStations()`.
 - **MCP** — `find_station` and the `actris://catalog/stations` resource gain the
   same three fields. Both read through the same cache. Regenerate
   `docs/mcp-reference.md`; remember that connected clients only see changes after
@@ -159,6 +199,9 @@ stable; `ebas_thredds.py` works and owes nothing to the portal.
 4. Ranking, network statistics and the colour scale are unchanged — this adds
    metadata and must not move a single measurement.
 5. A station panel shows altitude, status and a working portal link.
+6. A station that is inactive but still has recent data renders as exactly that —
+   not as "no longer measuring" — and an inactive station's historical values are
+   still present everywhere they were before.
 
 ## Effort
 
