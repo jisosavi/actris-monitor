@@ -37,6 +37,7 @@ frontend/src/
 docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
+docs/actris-metadata-api-plan.md  plan for moving to the ACTRIS metadata API v3
 ```
 
 ## Things that are easy to get wrong
