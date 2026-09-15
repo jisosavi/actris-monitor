@@ -20,8 +20,10 @@ Wavelengths are the values the fetch targets (`backend/variables.py`); selection
 
 ## Screenshots
 
-![Map view with the Pallas station detail panel open, showing its annual mean and a link to near-real-time data](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
-*Main map view — 2025 particle number concentration, with Pallas (Sammaltunturi) pinned. The panel shows the Level 2 annual mean and year-on-year change, then the live-data section linking through to EBAS near-real-time with its Level 1.5 caveat. Small cyan markers are sites that report live data but have no Level 2 record here.*
+![Map view with the Pallas station detail panel open, showing its annual mean, ACTRIS facility metadata and a link to near-real-time data](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
+*Main map view — 2025 particle number concentration, with Pallas (Sammaltunturi) pinned. The panel runs from this project's own Level 2 annual mean and year-on-year change, through the ACTRIS facility registry (altitude, labelling status, a link to the station's portal page), to the EBAS near-real-time section with its Level 1.5 caveat.*
+
+*Pallas is worth reading closely, because it shows why the registry flag is displayed and never filtered on: it is a fully **labelled** ACTRIS National Facility, it is currently **streaming live data** — and the registry records it as not currently registered as operating. All three are true at once. Filtering the map by that flag would have hidden a station that is actively measuring.*
 
 ![Data Setup panel for fetching and managing measurement data](docs/Actris%20Monitor%20-%20Data%20Setup%20View.jpg)
 *Data Setup panel — admin token, year range and variable selection, per-variable refresh, and network metadata backfill. Viewing the dashboard needs no token; only data management does.*
