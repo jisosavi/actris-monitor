@@ -143,6 +143,32 @@ forced; it only takes effect when `backfill_networks` runs.
 are cached 24 h and concurrency is capped at `_MAX_CONCURRENT = 20`. Don't raise
 that or add retry loops without a good reason.
 
+## The documentation site (`docs/`)
+
+VitePress, its own npm project (`cd docs && npm run build`), published to
+`isosavi.com/test/actris-monitor/docs/`. `docs/docs-site-plan.md` has the decisions
+and what is still open. Three things bite:
+
+**Build the frontend first.** `outDir` is `../frontend/dist/docs`, so one upload
+carries the dashboard and its docs together — but `vite build` empties
+`frontend/dist`, which takes the docs with it if the order is reversed.
+
+**The Scalar page needs `vp-raw` on its container.** VitePress installs a click
+handler on `window` with `{ capture: true }` and calls `preventDefault()` on every
+same-origin link, then resolves the hash itself. Scalar's endpoint links are hashes
+like `#GET/api/stations/{year}/{variable}`, which is not a valid selector — so the
+click is cancelled, nothing scrolls, and the URL and sidebar highlight still update
+because those happen first. It looks like a rendering bug. `router.js` skips links
+inside `.vp-raw`, which hands the click back. Stopping propagation in the container
+cannot work: capture on `window` runs before any listener inside it.
+
+**`cleanUrls` and `ignoreDeadLinks` both stay off.** The dashboard's directory on
+the server carries a catch-all rewrite, so a URL with no file behind it renders the
+map rather than 404ing — clean URLs would break every deep link, and a dead link in
+production would be invisible. `docs/public/.htaccess` turns that rewrite off inside
+the docs directory. VitePress validates file links but **not anchors**, so a wrong
+`#section` still ships silently.
+
 ## The MCP endpoint (`/mcp`)
 
 Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak

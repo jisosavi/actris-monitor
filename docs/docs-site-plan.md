@@ -3,9 +3,10 @@
 A published documentation site for this project, aimed at the people connecting an
 agent to `/mcp`. Investigated 2026-09-16.
 
-**Status:** phase 0 is closed and phases 1 and 3b are built — `cd docs && npm run
-build` produces the site, and a first upload to the server answered the last
-open question. Phases 2, 4 and 5 are open.
+**Status:** phases 0-4 are built and live at
+<https://www.isosavi.com/test/actris-monitor/docs/>. Only phase 5, the optional CI
+workflow, is open. The gotchas worth carrying forward are in `CLAUDE.md` under
+*The documentation site*.
 This document remains the decision record and the build order.
 
 The short version: **VitePress** for the site, **Scalar** for the API reference
