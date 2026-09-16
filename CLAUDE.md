@@ -223,6 +223,18 @@ protection with a localhost-only allowlist by default, so behind a real hostname
 every request gets `421 Misdirected Request` and the reason appears only in the
 server log. A bare hostname automatically also allows `<host>:*`.
 
+**The protocol era is chosen by a request header, and silently.** The SDK's
+`streamable_http_manager` routes on `MCP-Protocol-Version` **alone** — it never
+inspects the body, so putting the version in `params._meta` does nothing. A request
+without that header is served on the legacy leg, where the 2026-07-28 methods do not
+exist: `server/discover` answers `-32601` and capabilities report
+`listChanged: false`. Nothing errors; the client just gets an older protocol than the
+documentation describes. With the header, plus an `Mcp-Method` matching the body and
+the `_meta` envelope, the same server answers `listChanged: true` throughout. This
+cost an afternoon and produced a confident, wrong report that three documented claims
+were false — the claims were fine, the request was malformed. Verified curls for both
+paths are on the *Connecting a client* page.
+
 **Never call `database.init_db()` from the MCP layer.** It repoints the
 module-global connection without closing the old one *and* flips every
 `status='running'` fetch job to `'failed'`. The tools rely on the lifespan having

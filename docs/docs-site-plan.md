@@ -3,10 +3,11 @@
 A published documentation site for this project, aimed at the people connecting an
 agent to `/mcp`. Investigated 2026-09-16.
 
-**Status:** phases 0-4 are built and live at
-<https://www.isosavi.com/test/actris-monitor/docs/>. Only phase 5, the optional CI
-workflow, is open. The gotchas worth carrying forward are in `CLAUDE.md` under
-*The documentation site*.
+**Status: done.** All phases, including the optional CI workflow, are built and
+live at <https://www.isosavi.com/test/actris-monitor/docs/>. Two rounds of external
+review have been through it since. The gotchas worth carrying forward are in
+`CLAUDE.md` under *The documentation site*; this document is now a record of how it
+was decided rather than a list of work.
 This document remains the decision record and the build order.
 
 The short version: **VitePress** for the site, **Scalar** for the API reference
@@ -389,12 +390,23 @@ the API page. Not a tutorial series.
 | 4b | Repoint "About this app" at the site, plus type-check and lint | 30 min |
 | 5 | Optional CI workflow: both `--check`s plus the docs build | 1–2 hours |
 
-Roughly two days, and phase 2 is most of it — because writing the descriptions is
-the part no tool does for you.
+Roughly two days, and phase 2 was most of it — writing the descriptions is the part
+no tool does for you.
 
-## Still open
+Phase 5 grew in the building. As well as the checks, CI uploads the built site as a
+run artifact, which is the better thing to deploy: it comes from a known commit
+rather than from whatever `frontend/dist` happens to hold, which is the failure that
+once shipped a two-week-old bundle. It also asserts that the machine-readable
+formats are still advertised — a character count on the REST page would have failed
+the better version of that page.
 
-Scope is decided and nothing is blocking.
+What is *not* in the estimate is the work that came after: two external reviews, the
+generated reference under-reporting its own schemas, and a worked example with tests
+to keep it honest. A plan predicts the building, not the reading.
+
+## Two findings worth keeping
+
+Both are resolved. They are recorded because each looked like something else first.
 
 **The bare directory form did not work, and now does.** Answered by uploading,
 which is the only way it could have been.
