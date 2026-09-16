@@ -141,24 +141,35 @@ Two mechanics to get right:
 
 The reference gets the spec from `openapi.json` served alongside it.
 
-### What is not published
+### One plan doc is published; three are not
 
-The four `*-plan.md` files stay in `docs/` and are **excluded from the build** via
-`srcExclude`. They are working notes — decision records for whoever edits the code
-— and the site is for someone connecting a client. They remain public in the
-repository, and the site links to GitHub for anyone who wants the reasoning.
+`mcp-server-plan.md` **is published**, in a *Design notes* section. It holds the
+clearest existing account of what the annual means are *not* — the unweighted
+averaging, the mixed size cuts, the year-to-year step that comes from a file
+appearing rather than from the atmosphere. For someone deciding whether to trust a
+number their agent just returned, that is the most useful page on the site.
 
-One useful side effect: excluding them removes the **only** Vue-parsing hazard in
-the repository, the `<id>` in `actris-metadata-api-plan.md`. The published set —
-`mcp-reference.md` plus new prose — contains nothing VitePress can choke on. Fix
-the `<id>` anyway, as cheap insurance against a later decision to publish them,
-but it is no longer on the critical path.
+`nrt-integration-plan.md`, `actris-metadata-api-plan.md` and this document stay in
+`docs/` and are **excluded** via `srcExclude`. Two of them are internal data
+plumbing of no concern to someone connecting a client, and the NRT one opens with
+a bug post-mortem — candour among people editing the code, instability to a
+stranger evaluating the data. They remain public in the repository and the site
+links to GitHub for anyone who wants them.
 
-The trade-off, stated so it can be revisited: `mcp-server-plan.md` contains the
-clearest existing explanation of what the annual means are *not*, and that is
-genuinely integrator-facing. The MCP getting-started page must therefore carry
-those caveats itself rather than linking out to a document that is not on the
-site.
+**The published one needs a standing preamble**, added at build time rather than
+edited into the file: *working notes, dated, describing what was decided and why —
+not a commitment to build what is listed as unbuilt.* Without it a reader plans
+around monthly resolution arriving. This is the one piece of publishing a working
+note that is not free.
+
+Verified, so it is not assumed: `mcp-server-plan.md` contains no `{{` and no raw
+tags, so it builds unmodified. The `<id>` in `actris-metadata-api-plan.md` — the
+only Vue-parsing hazard in the repository — sits in an excluded file and is
+therefore still off the critical path. Fix it anyway as insurance; it is one pair
+of backticks.
+
+Because the design note is on the site, the MCP getting-started page can state the
+two caveats briefly and link to it, rather than re-explaining them in full.
 
 ### Theme
 
@@ -368,18 +379,15 @@ the part no tool does for you.
 
 ## Still open
 
-Everything about scope is decided. **One** fact remains unknown:
+Scope is decided and nothing is blocking.
 
-- **Does the bare directory form resolve?** A browser asking for
-  `/test/actris-monitor/docs/` is asking for a folder, not a file, and Apache's
-  `DirectoryIndex` setting is what turns that into `docs/index.html`. The open
-  question is ordering: this host also has a catch-all that serves the dashboard
-  whenever the requested thing is not a real file, and a folder is not a file.
-  Whether the folder resolves first depends on a `!-d` condition we cannot see
-  from outside. Phase 0 answers it with one folder containing one file, requested
-  with and without the trailing slash. If it loses, link to `docs/index.html`
-  explicitly or move to the sibling path `/test/actris-monitor-docs/`. Either way
-  it costs a line of config, not a redesign.
+**The bare directory form is expected to work** — the server's operator says a
+request for the `/docs` directory is handled, which means the rewrite defers to
+`DirectoryIndex` rather than intercepting the folder. Confirm it on the first
+upload anyway, since phase 0 is uploading a folder regardless and the check is
+free. If it were ever to fail, the fallbacks are linking to `docs/index.html`
+explicitly or moving to the sibling path `/test/actris-monitor-docs/` — a line of
+config, not a redesign.
 
 ### CORS on the try-it runner: not a problem after all
 
