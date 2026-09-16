@@ -18,6 +18,9 @@ subscription, no third-party account, the repository stays the source of truth.
 | API reference | **Scalar `@scalar/api-reference`, self-hosted** | MIT, npm dependency, no account, no CDN |
 | REST surface published | **Read endpoints only** | Admin and debug routes excluded from the published document, not merely undocumented |
 | Source of truth | **The repository, always** | `mcp-reference.md` is generated and gated; a second editable copy anywhere would defeat that |
+| Plan docs | **Not published** — `srcExclude`, link to GitHub | They are working notes, not integrator documentation. The site stays tight around one audience |
+| Discovery from the app | **The existing "About this app" button** | A human visitor's only route to the docs. See the constraint on that sidebar below |
+| Visual design | **Default theme, dashboard colours** | Familiar to the audience, and the two properties read as one project. No custom theme |
 
 ## Why not Scalar Docs
 
@@ -103,7 +106,7 @@ docs/
     reference.md         → the generated docs/mcp-reference.md
   api.md                 the Scalar reference page
   openapi.json           generated, read endpoints only
-  *-plan.md              the existing plan docs
+  *-plan.md              present, but srcExclude'd — not published
 ```
 
 Whether the generated reference is re-pointed into `mcp/` or left at
@@ -137,6 +140,59 @@ Two mechanics to get right:
   ones the MCP audience actually reads — unaffected.
 
 The reference gets the spec from `openapi.json` served alongside it.
+
+### What is not published
+
+The four `*-plan.md` files stay in `docs/` and are **excluded from the build** via
+`srcExclude`. They are working notes — decision records for whoever edits the code
+— and the site is for someone connecting a client. They remain public in the
+repository, and the site links to GitHub for anyone who wants the reasoning.
+
+One useful side effect: excluding them removes the **only** Vue-parsing hazard in
+the repository, the `<id>` in `actris-metadata-api-plan.md`. The published set —
+`mcp-reference.md` plus new prose — contains nothing VitePress can choke on. Fix
+the `<id>` anyway, as cheap insurance against a later decision to publish them,
+but it is no longer on the critical path.
+
+The trade-off, stated so it can be revisited: `mcp-server-plan.md` contains the
+clearest existing explanation of what the annual means are *not*, and that is
+genuinely integrator-facing. The MCP getting-started page must therefore carry
+those caveats itself rather than linking out to a document that is not on the
+site.
+
+### Theme
+
+The default VitePress theme, retinted to the dashboard's palette. That is a
+`.vitepress/theme/custom.css` overriding VitePress's CSS variables — no custom
+components, no layout work.
+
+The source of truth for the colours is `frontend/src/assets/main.css`, whose
+`:root` block carries the app tokens (`--accent: #303193`, `--bg: #eef1f7`,
+`--text: #1a1d3d`, `--border: #d8dff0`) under a comment describing them as
+shadcn tokens mapped to the FMI palette. There is a matching `.dark` block, so
+both of VitePress's themes can be mapped rather than only the light one.
+
+**Copy the values; do not import the file.** It pulls in Tailwind, MapLibre's
+stylesheet and `tw-animate-css`, none of which belong in a documentation build.
+A dozen hex values duplicated into `custom.css` is the smaller problem — and if
+the palette ever changes, the site being slightly off-brand is a cosmetic bug,
+whereas a docs build coupled to the dashboard's CSS pipeline is a real one.
+
+### Linking from the dashboard
+
+The "About this app ↗" button in `frontend/src/components/AdminPanel.vue`
+currently points at `REPOSITORY_URL`. Once the site exists, **repoint it there**
+rather than adding a button: the docs site becomes the better front door, and it
+can link onward to GitHub.
+
+This is not stylistic. The scoped style in that component carries a comment
+recording that two stacked buttons already overflow the sidebar on a 1000px
+window — enough to push *Data Setup* out of sight, which was a real bug someone
+fixed. A third button would regress it.
+
+The href depends on the deploy path settled in phase 0, so this change lands last.
+It is the only frontend change in the plan, and it needs
+`npm run type-check && npm run lint` before committing.
 
 ### The curated OpenAPI document
 
@@ -229,7 +285,9 @@ lookup. The existing files were checked: **zero occurrences of `{{`** anywhere,
 and the only raw tags are 100 `<br>` in `mcp-reference.md` (a native element,
 fine), one `<https://ebas-nrt.nilu.no>` autolink (fine), and **one `<id>` in
 `actris-metadata-api-plan.md`, which will break the build** and needs backticks.
-That is the entire migration cost of the prose.
+That is the entire migration cost of the prose — and with the plan docs excluded
+from the build, the `<id>` is not even that. It stays a fix worth making rather
+than a blocker.
 
 If `dump_mcp_tools.py` ever emits a `{` pair or a novel tag, the docs build starts
 failing on generated content. Cheap insurance: run the docs build in the same
@@ -284,20 +342,23 @@ the API page. Not a tutorial series.
 | 1 | VitePress skeleton: config, nav, sidebar, search, existing docs building | half a day |
 | 2 | Tag the routes, `dump_openapi.py`, write the six endpoint descriptions | most of a day |
 | 3 | Scalar page: dependency, client-only registration, spec wiring, CORS check | 2–3 hours |
-| 4 | New prose: landing page, MCP getting-started | half a day |
+| 3b | Retint the default theme from `main.css`, light and dark | half a day |
+| 4 | New prose: landing page, MCP getting-started incl. the data caveats | half a day |
+| 4b | Repoint "About this app" at the site, plus type-check and lint | 30 min |
 | 5 | Optional CI workflow: both `--check`s plus the docs build | 1–2 hours |
 
 Roughly two days, and phase 2 is most of it — because writing the descriptions is
 the part no tool does for you.
 
-## Open questions
+## Still open
 
-- **Subdirectory or sibling path** — largely settled: real files under
-  `/test/actris-monitor/docs/` are served correctly, so the subdirectory works
-  provided `cleanUrls` stays off. Only the bare-directory case is untested.
-- **Do the plan docs get published?** They are public in the repository already,
-  and `mcp-server-plan.md` genuinely helps an integrator understand what the data
-  is not. But they are written as working notes. Publish under "Design notes", or
-  `srcExclude` them and link to GitHub.
-- **Does the dashboard link to the docs?** The "About this app" dialog is the
-  natural place, and it would be the only path a human visitor has to find them.
+Everything about scope is decided. Two facts remain unknown, both answerable only
+by doing:
+
+- **Does the bare directory form resolve?** Whether `/test/actris-monitor/docs/`
+  reaches `docs/index.html` via `DirectoryIndex`, or the catch-all intercepts it
+  first. Phase 0, one folder with one file. If it loses, the sibling path
+  `/test/actris-monitor-docs/` sidesteps it entirely.
+- **Is the try-it runner worth keeping?** It needs `ALLOWED_ORIGIN` to include the
+  docs origin. If that proves awkward, disable the runner — the reference is the
+  part that matters.
