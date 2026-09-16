@@ -3,8 +3,9 @@
 A published documentation site for this project, aimed at the people connecting an
 agent to `/mcp`. Investigated 2026-09-16.
 
-**Status:** phases 1 and 3b are built — `cd docs && npm run build` produces the
-site. Phase 0's host test is waiting on an upload. Phases 2, 4 and 5 are open.
+**Status:** phase 0 is closed and phases 1 and 3b are built — `cd docs && npm run
+build` produces the site, and a first upload to the server answered the last
+open question. Phases 2, 4 and 5 are open.
 This document remains the decision record and the build order.
 
 The short version: **VitePress** for the site, **Scalar** for the API reference
@@ -388,26 +389,36 @@ the part no tool does for you.
 
 Scope is decided and nothing is blocking.
 
-**The bare directory form is expected to work.** Probed against a sibling app at
-`/test/ikimetsat/`, which the operator offered as the comparison:
+**The bare directory form did not work, and now does.** Answered by uploading,
+which is the only way it could have been.
 
-- `/test/ikimetsat/` serves its own `index.html` — **`DirectoryIndex` works on
-  this server.**
-- `/test/ikimetsat/zzz` returns a plain **404**, and so does `/test/zzz`.
+Probing a sibling app at `/test/ikimetsat/` established that `DirectoryIndex`
+works on this server and that misses 404 normally there — so the dashboard's
+catch-all is **scoped to `/test/actris-monitor/`**, not server-wide. But an
+`.htaccess` applies to subdirectories, so the docs nested inside it inherited the
+rewrite. A *directory* is not a file, so the rewrite's `!-f` test passed and
+`/test/actris-monitor/docs/` was answered with the dashboard.
 
-So the catch-all that serves the dashboard is **scoped to
-`/test/actris-monitor/`** — almost certainly an `.htaccess` in that directory —
-rather than being a server-wide rule. Everywhere else Apache behaves normally.
+It was not obvious from a browser. Both pages are titled "ACTRIS Monitor", so the
+bare directory form looked like it worked. The byte count gave it away: 767 bytes,
+which is exactly the dashboard's SPA shell, against 13,862 for the real landing
+page.
 
-That has one consequence worth writing down: an `.htaccess` applies to
-subdirectories, so docs nested at `/test/actris-monitor/docs/` **inherit the
-rewrite**, while a sibling at `/test/actris-monitor-docs/` would not. Every URL
-this site emits is a real `.html` file, so the inherited rewrite never fires and
-the nested path is fine. If it ever became awkward, a one-line
-`docs/.htaccess` containing `RewriteEngine Off` makes the nested directory
-behave exactly like a sibling.
+The fix ships with the site, as `docs/public/.htaccess` — VitePress copies
+`public/` to the output root, dotfiles included:
 
-Confirm on the first upload regardless — the check is free.
+```apache
+RewriteEngine Off
+DirectoryIndex index.html
+```
+
+That makes the directory behave like any other on the server: `/docs/` resolves
+to `index.html`, and a missing page is an honest 404 rather than a silent
+redirect to the map. It also means the nested path costs nothing that the sibling
+path would have saved, so `/test/actris-monitor/docs/` stands.
+
+`cleanUrls` still stays off. With the rewrite disabled there is nothing left to
+map `/mcp-reference` onto `/mcp-reference.html`.
 
 ### CORS on the try-it runner: not a problem after all
 
