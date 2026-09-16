@@ -177,12 +177,43 @@ The dashboard is built with `npm run build` and the static output is placed at
 `/test/actris-monitor/docs/`, with `base: '/test/actris-monitor/docs/'` in the
 config.
 
-**Verify before committing to that path.** Whether a static host serves a real
-subdirectory under an SPA route depends on whether it tries real files before
-falling back to the SPA's `index.html`. Most do. If this one does not, use a
-sibling path — `/test/actris-monitor-docs/` — which cannot interact with the SPA
-fallback at all. This is a five-minute test with an empty `index.html` and it
-should happen before anything else is built.
+### What the live host actually does
+
+Probed 2026-09-16 against `www.isosavi.com`, Apache:
+
+- **A non-existent path returns the dashboard.** `/test/actris-monitor/zzz` comes
+  back `200 text/html`, byte-identical to `/test/actris-monitor/index.html`. There
+  is a catch-all rewrite, even though the dashboard has **no `vue-router`** and
+  therefore never needed one.
+- **Real files are served, not rewritten.** `/test/actris-monitor/assets/index-*.js`
+  returns 2.4 MB of `text/javascript`. So the rewrite carries a `!-f` condition
+  and a real subdirectory of real files is safe.
+
+This is good news with one sharp edge.
+
+**Set `cleanUrls: false`** — which is VitePress's default, so this is really "do
+not turn it on". With clean URLs, `/docs/mcp/getting-started` has no file behind
+it (the file is `getting-started.html`), the `!-f` condition fails, and the
+catch-all serves **the dashboard** in place of the docs page. Not a 404 — the map.
+With clean URLs off, every route is a real `.html` file, the fallback never fires,
+and a hard refresh or a shared deep link resolves correctly.
+
+Clean URLs are recoverable later by dropping an `.htaccess` inside the docs
+directory with its own rewrite rules, if `AllowOverride` permits it. Not worth it
+for the first release; `.html` in a docs URL has never confused anyone.
+
+**One thing still needs a live test**, because it cannot be answered by probing a
+path that does not exist yet: whether `/test/actris-monitor/docs/` resolves to
+`docs/index.html` via `DirectoryIndex`, or whether the rewrite intercepts the bare
+directory first (it depends on a `!-d` condition we cannot see). Upload a folder
+containing one `index.html` and request it with and without the trailing slash.
+If the directory form loses, link to `docs/index.html` explicitly, or use the
+sibling path `/test/actris-monitor-docs/`.
+
+**A confusing failure mode to know about:** because of the catch-all, a mistyped
+docs URL renders the dashboard rather than a 404. Dead internal links will not
+announce themselves in production. Keep `ignoreDeadLinks` off so the *build*
+catches them instead.
 
 There is **no `.github/` directory in this repository** and therefore no CI. The
 `--check` flags on the generator scripts are run by hand today. The plan does not
@@ -231,22 +262,25 @@ the API page. Not a tutorial series.
 
 ## Verification
 
-1. A static file at `/test/actris-monitor/docs/index.html` is served by the host
-   without the SPA intercepting it. **Do this first.**
-2. `vitepress build` succeeds over the existing `docs/*.md` unchanged, apart from
+1. A folder containing one `index.html` at `/test/actris-monitor/docs/` is served
+   both as `/docs/` and as `/docs/index.html`. **Do this first** — it is the only
+   part of the host's behaviour still unknown.
+2. A deep page — `/docs/mcp/reference.html` — survives a hard refresh rather than
+   rendering the dashboard.
+3. `vitepress build` succeeds over the existing `docs/*.md` unchanged, apart from
    the `<id>` fix.
-3. The Scalar page renders the curated `openapi.json` and shows exactly six
+4. The Scalar page renders the curated `openapi.json` and shows exactly six
    endpoints — no `/api/db/reset`, no `/api/debug/station/{id}`.
-4. `dump_openapi.py --check` fails after a route is retagged, and passes after a
+5. `dump_openapi.py --check` fails after a route is retagged, and passes after a
    regenerate.
-5. Local search returns a tool name — `get_change` — from the generated reference.
-6. The site works on a phone, and with JavaScript disabled for the first paint.
+6. Local search returns a tool name — `get_change` — from the generated reference.
+7. The site works on a phone, and with JavaScript disabled for the first paint.
 
 ## Effort
 
 | Phase | What | Estimate |
 |---|---|---|
-| 0 | Host path test, the `<id>` fix | 30 min |
+| 0 | Directory-index test on the host, the `<id>` fix | 30 min |
 | 1 | VitePress skeleton: config, nav, sidebar, search, existing docs building | half a day |
 | 2 | Tag the routes, `dump_openapi.py`, write the six endpoint descriptions | most of a day |
 | 3 | Scalar page: dependency, client-only registration, spec wiring, CORS check | 2–3 hours |
@@ -258,9 +292,9 @@ the part no tool does for you.
 
 ## Open questions
 
-- **Subdirectory or sibling path** — `/test/actris-monitor/docs/` reads better;
-  `/test/actris-monitor-docs/` cannot collide with the SPA fallback. Phase 0
-  decides it.
+- **Subdirectory or sibling path** — largely settled: real files under
+  `/test/actris-monitor/docs/` are served correctly, so the subdirectory works
+  provided `cleanUrls` stays off. Only the bare-directory case is untested.
 - **Do the plan docs get published?** They are public in the repository already,
   and `mcp-server-plan.md` genuinely helps an integrator understand what the data
   is not. But they are written as working notes. Publish under "Design notes", or
