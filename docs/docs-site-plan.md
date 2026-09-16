@@ -1,0 +1,269 @@
+# Documentation site plan
+
+A published documentation site for this project, aimed at the people connecting an
+agent to `/mcp`. Investigated 2026-09-16. **Not implemented** — this document is
+the decision record and the build order.
+
+The short version: **VitePress** for the site, **Scalar** for the API reference
+page inside it, hosted as static files next to the dashboard on isosavi.com. No
+subscription, no third-party account, the repository stays the source of truth.
+
+## Decisions already made
+
+| Question | Decision | Why |
+|---|---|---|
+| Audience | **Agent / MCP client developers and operators** | The MCP endpoint is the public programmatic interface. The REST API is an implementation detail of the dashboard |
+| Framework | **VitePress**, stable 1.6.x | Static output we can host ourselves, Vite/Vue toolchain already in the repo, markdown files stay where they are |
+| Docs platform | **Not Scalar Docs** | Hosted-only, and our own domain starts at $150/mo. See below |
+| API reference | **Scalar `@scalar/api-reference`, self-hosted** | MIT, npm dependency, no account, no CDN |
+| REST surface published | **Read endpoints only** | Admin and debug routes excluded from the published document, not merely undocumented |
+| Source of truth | **The repository, always** | `mcp-reference.md` is generated and gated; a second editable copy anywhere would defeat that |
+
+## Why not Scalar Docs
+
+Worth writing down, because the marketing copy invites the opposite conclusion and
+someone will propose it again.
+
+Scalar sells three separable things. The **API Reference renderer** and **API
+Client** are MIT and genuinely self-hostable — `github.com/scalar/scalar` ships
+`api-reference`, `api-client`, `openapi-parser`, `themes`, `sidebar`,
+`server-side-rendering` and friends. The **Docs platform** (markdown/MDX guides,
+navigation, search, `scalar.config.json`) is **not in that repository** and has no
+build or export command: the CLI is `project preview`, `project publish`,
+`publish --preview`, `publish --github`, `deployments list`, `rollback`. Publish
+uploads to Scalar's servers. The **Agent product** generates an MCP server *from*
+an OpenAPI document, which is the opposite direction from ours and would put a
+proxy outside our in-process rate limiter.
+
+Scalar's own pages say "self-host it, it's open source". That sentence is about
+the renderer and the client. It gets restated loosely enough to sound like it
+covers the guides platform. It does not.
+
+Pricing, if this is ever revisited: Free is a `*.scalar.app` subdomain, 1 editor
+seat, 3 APIs, 25 endpoints. A custom domain (`docs.isosavi.com`) starts at Pro,
+$150/month. Hosting under a *subpath* — which is where this project's docs would
+naturally sit — is listed as a Business feature, $600/month.
+
+So Scalar Docs would cost $150–600/month to render markdown we already have, for
+an audience whose primary document (`mcp-reference.md`) it has no special
+understanding of. The renderer, meanwhile, is free and fits.
+
+## What VitePress is
+
+A static site generator built on Vite and Vue 3, by the Vue team; it is what
+Vite's, Vue's, Pinia's and Vitest's own documentation runs on. It takes a
+directory of markdown files plus a config, and emits plain HTML/CSS/JS you can
+copy onto any web server.
+
+What makes it the right fit here specifically:
+
+- **It consumes the markdown we already have**, in place. No migration, no MDX, no
+  front-matter requirements. `docs/*.md` stays exactly as `dump_mcp_tools.py`
+  writes it.
+- **Static output, no runtime.** Builds to a directory; deploys the same way the
+  dashboard already deploys. Nothing new to run, nothing to pay for.
+- **`base` handles subpath deployment** — the same problem `VITE_BASE_PATH`
+  already solves for the frontend.
+- **Local search is built in** (`themeConfig.search = { provider: 'local' }`), a
+  client-side MiniSearch index. No Algolia account, no external request.
+- **Vue components work inside markdown**, which is how the Scalar API reference
+  becomes a page rather than a separate site.
+- The first visit is pre-rendered HTML — it works without JavaScript and indexes
+  properly — then it hydrates into an SPA for subsequent navigation.
+
+### Version note, and why the docs site is its own npm project
+
+VitePress stable is **1.6.4**, which depends on Vite `^5.4` and Vue `^3.5`. The
+dashboard in `frontend/` is on **Vite 8** and TypeScript 6. VitePress 2 (Vite 8)
+exists only as `2.0.0-alpha.20`.
+
+Do not try to reconcile these. The docs site gets **its own `package.json` and its
+own `node_modules`** under `docs/`, with no workspace link to `frontend/`. Two
+independent Vite versions in two independent projects is a non-event; one
+lockfile trying to satisfy both is a weekend.
+
+Track VitePress 2 and move when it is stable. Nothing in the plan depends on it.
+
+## Design
+
+### Layout
+
+VitePress's default convention puts the config inside the content directory, which
+means `docs/` becomes the site with no files moved:
+
+```
+docs/
+  .vitepress/
+    config.ts            base, nav, sidebar, local search
+    theme/index.ts       registers the client-only Scalar component
+  package.json           vitepress + @scalar/api-reference, separate from frontend/
+  index.md               site landing page (NOT a copy of README.md)
+  mcp/
+    getting-started.md   new prose: connect a client, what to expect
+    reference.md         → the generated docs/mcp-reference.md
+  api.md                 the Scalar reference page
+  openapi.json           generated, read endpoints only
+  *-plan.md              the existing plan docs
+```
+
+Whether the generated reference is re-pointed into `mcp/` or left at
+`docs/mcp-reference.md` and routed with `rewrites` is a detail for the build; the
+constraint is that **`dump_mcp_tools.py` keeps owning the file**. If the path
+changes, the script's `OUTPUT` changes and `CLAUDE.md` follows. It never becomes
+two files.
+
+### README.md stays put, and stays different
+
+`README.md` is GitHub's landing page and must keep working as one. The site's
+`index.md` is not a copy of it — it is a short hero page that routes the two
+audiences apart: "connect an agent" to the MCP section, "see the data" to the live
+dashboard. Duplicated prose is how the two drift.
+
+### The Scalar page
+
+`@scalar/api-reference` is **1.68.0, MIT, 25 dependencies, no peer dependencies**,
+and exports `./components` and `./style.css`. It is a Vue 3 component, installed
+as a normal dependency — nothing is fetched from a CDN at runtime, which is the
+whole point of using the package rather than `scalar-fastapi`.
+
+Two mechanics to get right:
+
+- **It must be client-only.** VitePress pre-renders every page; the Scalar
+  component is not SSR-safe. Register it with `defineClientComponent` in the
+  custom theme, or wrap the usage in `<ClientOnly>`. Skipping this fails at build
+  time, loudly, which is the good kind of failure.
+- **Keep it on its own route.** Scalar is a large bundle. VitePress code-splits per
+  page, so a client-only import on `api.md` alone leaves every other page — the
+  ones the MCP audience actually reads — unaffected.
+
+The reference gets the spec from `openapi.json` served alongside it.
+
+### The curated OpenAPI document
+
+`backend/main.py` has **15 routes and zero `summary=`, `description=` or `tags=`**.
+The published document should contain only the read endpoints:
+`/api/stations/{year}/{variable}`, `/api/network-stats/{year}/{variable}`,
+`/api/variables`, `/api/db-status`, `/api/nrt/stations`, `/api/actris/facilities`.
+
+**Tag the routes, filter in a script — don't use `include_in_schema=False`.**
+Setting that flag removes the admin endpoints from FastAPI's own `/docs` too, and
+the operator running a fetch is exactly the person who benefits from having them
+there. Instead: tag every route `Public`, `Admin` or `Internal`, and add
+`backend/scripts/dump_openapi.py` that emits only the `Public` ones to
+`docs/openapi.json`.
+
+That script is deliberately a sibling of `dump_mcp_tools.py`: same shape, same
+`--check` flag, same "generated, do not hand-edit" banner. One more generated
+artefact under the same rule is cheap; a second, different convention is not.
+
+Writing the descriptions is the real work in this phase. The generator is an hour;
+annotating six endpoints so the page is worth publishing is most of a day.
+
+### Try-it, and CORS
+
+Scalar's reference includes a request runner. Firing it from
+`isosavi.com` against the Railway backend is a cross-origin request, so
+`ALLOWED_ORIGIN` must include the docs origin — the same variable `CLAUDE.md`
+already flags, now with one more reason to be set correctly in production.
+
+If that turns out to be more trouble than it is worth, the runner can be disabled
+and the page left as a reference. The reference is the part that matters.
+
+## Deployment
+
+The dashboard is built with `npm run build` and the static output is placed at
+`isosavi.com/test/actris-monitor/`. The docs build the same way
+(`vitepress build`, output in `docs/.vitepress/dist`) and are copied to
+`/test/actris-monitor/docs/`, with `base: '/test/actris-monitor/docs/'` in the
+config.
+
+**Verify before committing to that path.** Whether a static host serves a real
+subdirectory under an SPA route depends on whether it tries real files before
+falling back to the SPA's `index.html`. Most do. If this one does not, use a
+sibling path — `/test/actris-monitor-docs/` — which cannot interact with the SPA
+fallback at all. This is a five-minute test with an empty `index.html` and it
+should happen before anything else is built.
+
+There is **no `.github/` directory in this repository** and therefore no CI. The
+`--check` flags on the generator scripts are run by hand today. The plan does not
+assume that changes, but it is the obvious moment to add a workflow that runs
+`dump_mcp_tools.py --check`, `dump_openapi.py --check` and the VitePress build on
+push. Until then, the release ritual is: regenerate, build, upload.
+
+## Risks
+
+**Vue parsing of existing markdown.** VitePress compiles markdown to Vue
+components, so `{{ }}` becomes interpolation and `<tag>` becomes a component
+lookup. The existing files were checked: **zero occurrences of `{{`** anywhere,
+and the only raw tags are 100 `<br>` in `mcp-reference.md` (a native element,
+fine), one `<https://ebas-nrt.nilu.no>` autolink (fine), and **one `<id>` in
+`actris-metadata-api-plan.md`, which will break the build** and needs backticks.
+That is the entire migration cost of the prose.
+
+If `dump_mcp_tools.py` ever emits a `{` pair or a novel tag, the docs build starts
+failing on generated content. Cheap insurance: run the docs build in the same
+breath as `--check`.
+
+**The generated reference gains a second consumer.** Today the file has one reader
+and a staleness gate. After this it also has a published URL, so "regenerated but
+not deployed" becomes a new way to be silently wrong. The mitigation is the CI
+workflow above, and until it exists, discipline.
+
+**Scope creep into a documentation project.** The audience is MCP operators. The
+first release is: landing page, connect-a-client guide, the generated reference,
+the API page. Not a tutorial series.
+
+## Deliberately not chosen
+
+- **Scalar Docs** — hosted-only and $150/month minimum for our own domain, for
+  markdown rendering. See above.
+- **`scalar-fastapi` on the backend** — three lines and tempting, but it defaults
+  to loading the renderer from jsdelivr, and it puts another public route on the
+  Railway container we are deliberately keeping small and rate-limited. The npm
+  dependency in the docs site is self-contained.
+- **A docs route inside the existing Vue app** — means hand-rolling markdown
+  rendering, a sidebar and search inside an app whose job is a map. VitePress is
+  that work, already done.
+- **Publishing `CLAUDE.md`** — it is written for whoever is editing the code, and
+  its value is being next to the code. It stays repository-only.
+- **Moving the plan docs out of `docs/`** — they stay, and the site can publish
+  them under a clearly-labelled section. Whether it should is an open question.
+
+## Verification
+
+1. A static file at `/test/actris-monitor/docs/index.html` is served by the host
+   without the SPA intercepting it. **Do this first.**
+2. `vitepress build` succeeds over the existing `docs/*.md` unchanged, apart from
+   the `<id>` fix.
+3. The Scalar page renders the curated `openapi.json` and shows exactly six
+   endpoints — no `/api/db/reset`, no `/api/debug/station/{id}`.
+4. `dump_openapi.py --check` fails after a route is retagged, and passes after a
+   regenerate.
+5. Local search returns a tool name — `get_change` — from the generated reference.
+6. The site works on a phone, and with JavaScript disabled for the first paint.
+
+## Effort
+
+| Phase | What | Estimate |
+|---|---|---|
+| 0 | Host path test, the `<id>` fix | 30 min |
+| 1 | VitePress skeleton: config, nav, sidebar, search, existing docs building | half a day |
+| 2 | Tag the routes, `dump_openapi.py`, write the six endpoint descriptions | most of a day |
+| 3 | Scalar page: dependency, client-only registration, spec wiring, CORS check | 2–3 hours |
+| 4 | New prose: landing page, MCP getting-started | half a day |
+| 5 | Optional CI workflow: both `--check`s plus the docs build | 1–2 hours |
+
+Roughly two days, and phase 2 is most of it — because writing the descriptions is
+the part no tool does for you.
+
+## Open questions
+
+- **Subdirectory or sibling path** — `/test/actris-monitor/docs/` reads better;
+  `/test/actris-monitor-docs/` cannot collide with the SPA fallback. Phase 0
+  decides it.
+- **Do the plan docs get published?** They are public in the repository already,
+  and `mcp-server-plan.md` genuinely helps an integrator understand what the data
+  is not. But they are written as working notes. Publish under "Design notes", or
+  `srcExclude` them and link to GitHub.
+- **Does the dashboard link to the docs?** The "About this app" dialog is the
+  natural place, and it would be the only path a human visitor has to find them.
