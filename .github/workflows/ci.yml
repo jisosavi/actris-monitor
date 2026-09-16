@@ -22,8 +22,8 @@ jobs:
     name: Backend tests and generated docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           # 3.12 is production: the container is python:3.12-slim, and the MCP SDK
           # resolves different starlette/anyio versions on newer Pythons.
@@ -47,8 +47,8 @@ jobs:
     name: Frontend type-check and lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -75,8 +75,8 @@ jobs:
       VITE_API_BASE_URL: https://actris-monitor-production.up.railway.app/api
       VITE_BASE_PATH: /test/actris-monitor/
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -109,7 +109,7 @@ jobs:
           # back to chrome only, agents and crawlers get an empty page again.
           sys.exit(0 if n > 1200 else 'api.html lost its pre-rendered content')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: site-${{ github.sha }}
           path: frontend/dist
