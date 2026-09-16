@@ -44,6 +44,31 @@ Station codes like `FI0050R` are what every other tool takes. Resolve a name wit
 **The current year is normally empty.** Level 2 publication lags by a year or two,
 so the latest period in the matrix is not "now".
 
+## A call, and what comes back
+
+Captured from the live endpoint on 2026-09-16, unedited. Both files are fetchable:
+[request](./examples/get-series-request.json),
+[response](./examples/get-series-response.json).
+
+<<< @/public/examples/get-series-request.json [tools/call request]
+
+<<< @/public/examples/get-series-response.json{json} [response]
+
+Three things in there are worth pointing at, because they are the conventions most
+often misread:
+
+**`"mean": null` for Hyytiälä in 2024 is data, not an omission.** Every period in
+the requested range comes back as a row. A period missing from `rows` would be
+indistinguishable from one that was never asked for, so gaps are explicit.
+
+**`provenance` is on the response, not in the documentation.** It travels with the
+numbers because that is the only form that survives being pasted into something
+else. `mean_method` is the one to read before comparing two stations.
+
+**`truncated` and `n_remaining` are zero here**, but `get_series` caps at 10
+stations and drops *whole* stations when it truncates — never part of a station's
+record, which would read as a complete series and invite a trend that is not there.
+
 ## What the data is, and is not
 
 Three variables — particle number concentration, light scattering and light

@@ -178,6 +178,12 @@ the design and the roadmap. Live today: **all six tools** (`get_coverage`,
 **two resources** (`actris://catalog/stations`, `actris://citation`) and **one
 prompt** (`data_availability_briefing`).
 
+**CI:** `.github/workflows/ci.yml` runs the backend tests, both `--check` gates,
+the frontend type-check and lint, and builds the deployable site — which it uploads
+as a run artifact, so a deploy comes from a known commit rather than from whatever
+`frontend/dist` happens to hold. It also asserts `api.html` still renders without
+JavaScript.
+
 **Tests:** `cd backend && pytest` (install `requirements-dev.txt` first). They drive
 the tools through the SDK's in-process client — no HTTP, no port — and target the
 conventions that fail *silently*: gaps as explicit nulls, truncation by whole

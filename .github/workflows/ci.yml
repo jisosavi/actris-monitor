@@ -1,0 +1,116 @@
+# The gates that were being run by hand, and sometimes not at all: `npm run lint`
+# was red on main for an unknown length of time because it bailed at oxlint before
+# eslint ever ran, and a deploy once shipped a two-week-old bundle because a local
+# build had hung silently.
+#
+# So this does two jobs: it runs the checks, and it builds the thing you upload,
+# from a known commit, every time.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A second push supersedes the first; there is nothing worth finishing about a run
+# for a commit that is no longer the tip.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests and generated docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # 3.12 is production: the container is python:3.12-slim, and the MCP SDK
+          # resolves different starlette/anyio versions on newer Pythons.
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - name: pytest
+        working-directory: backend
+        run: python -m pytest -q
+      # Both generated documents are committed, so a stale one is a silent lie.
+      # Neither check needs a database or any environment variable.
+      - name: docs/mcp-reference.md is current
+        working-directory: backend
+        run: python scripts/dump_mcp_tools.py --check
+      - name: docs/public/openapi.json is current
+        working-directory: backend
+        run: python scripts/dump_openapi.py --check
+
+  frontend:
+    name: Frontend type-check and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      # Separate steps rather than `npm run build`: that script uses run-p, which
+      # has hung locally at 0% CPU, and a combined failure does not say which gate
+      # broke.
+      - name: type-check
+        working-directory: frontend
+        run: npx vue-tsc --build
+      - name: oxlint
+        working-directory: frontend
+        run: npx oxlint .
+      - name: eslint
+        working-directory: frontend
+        run: npx eslint .
+
+  site:
+    name: Build the deployable site
+    runs-on: ubuntu-latest
+    env:
+      VITE_API_BASE_URL: https://actris-monitor-production.up.railway.app/api
+      VITE_BASE_PATH: /test/actris-monitor/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            docs/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: docs
+      # Order matters: vite build empties frontend/dist, which is where the docs
+      # are written. Reversed, the docs are deleted by the app build.
+      - name: Build the dashboard
+        working-directory: frontend
+        run: npx vite build
+      # Also the only gate on the docs: dead links and Vue-parsing errors in
+      # markdown fail here or nowhere.
+      - name: Build the documentation
+        working-directory: docs
+        run: npm run build
+      - name: Check the REST page survives without JavaScript
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          html = open('frontend/dist/docs/api.html').read()
+          text = re.sub(r'<[^>]+>', ' ', re.sub(r'<script.*?</script>', '', html, flags=re.S))
+          n = len(re.sub(r'\s+', ' ', text).strip())
+          print(f'{n} characters of server-rendered text')
+          # The Scalar embed renders nothing without JS. If this page ever drops
+          # back to chrome only, agents and crawlers get an empty page again.
+          sys.exit(0 if n > 1200 else 'api.html lost its pre-rendered content')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-${{ github.sha }}
+          path: frontend/dist
+          retention-days: 30

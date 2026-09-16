@@ -110,24 +110,51 @@ def render_fields(schema: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_defs(schema: dict[str, Any]) -> list[str]:
-    """Render the nested models a tool's output refers to."""
-    defs: dict[str, Any] = schema.get("$defs", {})
+def render_shape(name: str, schema: dict[str, Any], level: str) -> list[str]:
+    lines = [f"{level} `{name}`", ""]
+    if desc := schema.get("description"):
+        lines += [desc, ""]
+    lines += render_fields(schema)
+    lines.append("")
+    return lines
+
+
+def render_defs(schema: dict[str, Any], skip: set[str]) -> list[str]:
+    """Render the nested models a tool's output refers to, minus the shared ones."""
+    defs = {k: v for k, v in schema.get("$defs", {}).items() if k not in skip}
     if not defs:
         return []
     lines = ["#### Shapes", ""]
     for name, sub in sorted(defs.items()):
-        lines.append(f"##### `{name}`")
-        lines.append("")
-        if desc := sub.get("description"):
-            lines.append(desc)
-            lines.append("")
-        lines.extend(render_fields(sub))
-        lines.append("")
+        lines += render_shape(name, sub, "#####")
     return lines
 
 
-def render_tool(tool: Any) -> list[str]:
+def shared_defs(tools: list[Any]) -> dict[str, Any]:
+    """Definitions that appear in more than one tool and are identical in each.
+
+    Hoisting these is not tidying. Six tools each rendered their own
+    `##### \`Provenance\`` heading, so the anchors came out as `#provenance`,
+    `#provenance-1` … `#provenance-5` — while every `$ref` link rendered by
+    `type_of` pointed at `#provenance`. Five of the six tools linked to a
+    different tool's copy of the shape, and it looked like it worked because the
+    destination was byte-identical.
+
+    A definition that differs between tools stays where it is: the duplication is
+    then carrying information, and the anchors are genuinely distinct.
+    """
+    seen: dict[str, list[Any]] = {}
+    for tool in tools:
+        for name, body in (tool.output_schema or {}).get("$defs", {}).items():
+            seen.setdefault(name, []).append(body)
+    return {
+        name: bodies[0]
+        for name, bodies in seen.items()
+        if len(bodies) > 1 and all(b == bodies[0] for b in bodies)
+    }
+
+
+def render_tool(tool: Any, shared: set[str]) -> list[str]:
     ann = tool.annotations
     hints = []
     if ann is not None:
@@ -158,7 +185,7 @@ def render_tool(tool: Any) -> list[str]:
         lines += ["#### Returns", ""]
         lines += render_fields(out)
         lines.append("")
-        lines += render_defs(out)
+        lines += render_defs(out, shared)
     return lines
 
 
@@ -181,13 +208,14 @@ async def build() -> str:
         lines.append("")
 
     tools = sorted(await mcp.list_tools(), key=lambda t: t.name)
+    shared = shared_defs(tools)
     lines += ["## Tools", "", "Verbs the *model* calls.", ""]
     # No count of what's *missing* — a hardcoded "seven more" is exactly the kind of
     # number that goes stale the first time a tool lands.
     lines.append(f"{len(tools)} tool{'s' if len(tools) != 1 else ''} served today. "
                  "Further tools are designed in `docs/mcp-server-plan.md`.\n")
     for tool in tools:
-        lines.extend(render_tool(tool))
+        lines.extend(render_tool(tool, set(shared)))
 
     # Each entry is its own subsection rather than a bullet: descriptions run to
     # several paragraphs, and a paragraph inside a list item breaks the list.
@@ -207,6 +235,17 @@ async def build() -> str:
             lines += [f"*{r.mime_type}*", ""] if r.mime_type else []
             if r.description:
                 lines += [r.description, ""]
+
+    if shared:
+        lines += [
+            "## Common shapes",
+            "",
+            "Objects several tools return, defined identically in each. Every "
+            "`$ref` above links here.",
+            "",
+        ]
+        for name, body in sorted(shared.items()):
+            lines += render_shape(name, body, "###")
 
     if prompts := await mcp.list_prompts():
         lines += [

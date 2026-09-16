@@ -79,22 +79,6 @@ Coverage is reported across every year this server holds, not for one period.
 
 #### Shapes
 
-##### `Provenance`
-
-Attached to every tool result. Paraphrase-resistant only if it travels with the data.
-
-- **`source`** — `string`, optional
-  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
-- **`qc_level`** — `string`, optional
-  <br>EBAS QC level of the underlying files.
-  <br>*Default:* lev2
-- **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
-- **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
-- **`citation`** — `string`, optional
-  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
-
 ##### `StationMatch`
 
 - **`id`** — `string`, **required**
@@ -189,22 +173,6 @@ to zero, and the difference changes what the answer means.
 - **`status`** — `string`, **required**
   <br>changed, or missing_from / missing_to / missing_both when one or both periods hold no usable value.
 
-##### `Provenance`
-
-Attached to every tool result. Paraphrase-resistant only if it travels with the data.
-
-- **`source`** — `string`, optional
-  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
-- **`qc_level`** — `string`, optional
-  <br>EBAS QC level of the underlying files.
-  <br>*Default:* lev2
-- **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
-- **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
-- **`citation`** — `string`, optional
-  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
-
 ### `get_coverage`
 
 **Data coverage**
@@ -253,22 +221,6 @@ One cell of the availability matrix.
   <br>Stations that produced a usable mean for this period. Counts stations with a non-null mean, not all stations that reported. Null means the period was fetched but its summary statistics were not stored.
 - **`fetched_at`** — `string`, **required**
   <br>When this period was retrieved from NILU (ISO 8601, UTC).
-
-##### `Provenance`
-
-Attached to every tool result. Paraphrase-resistant only if it travels with the data.
-
-- **`source`** — `string`, optional
-  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
-- **`qc_level`** — `string`, optional
-  <br>EBAS QC level of the underlying files.
-  <br>*Default:* lev2
-- **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
-- **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
-- **`citation`** — `string`, optional
-  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
 
 ##### `VariableInfo`
 
@@ -341,22 +293,6 @@ different n_stations as partly a change in who was measuring.
   <br>Stations with a usable value in this period, after filters.
   <br>*Default:* 0
 
-##### `Provenance`
-
-Attached to every tool result. Paraphrase-resistant only if it travels with the data.
-
-- **`source`** — `string`, optional
-  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
-- **`qc_level`** — `string`, optional
-  <br>EBAS QC level of the underlying files.
-  <br>*Default:* lev2
-- **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
-- **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
-- **`citation`** — `string`, optional
-  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
-
 ### `get_ranking`
 
 **Station ranking**
@@ -413,22 +349,6 @@ numbers is how much of the network was silent that year.
 - **`suggestion`** — `string` | `null`, optional
 
 #### Shapes
-
-##### `Provenance`
-
-Attached to every tool result. Paraphrase-resistant only if it travels with the data.
-
-- **`source`** — `string`, optional
-  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
-- **`qc_level`** — `string`, optional
-  <br>EBAS QC level of the underlying files.
-  <br>*Default:* lev2
-- **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
-- **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
-- **`citation`** — `string`, optional
-  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
 
 ##### `RankingRow`
 
@@ -493,22 +413,6 @@ not the current year — Level 2 publication lags by a year or two.
 
 #### Shapes
 
-##### `Provenance`
-
-Attached to every tool result. Paraphrase-resistant only if it travels with the data.
-
-- **`source`** — `string`, optional
-  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
-- **`qc_level`** — `string`, optional
-  <br>EBAS QC level of the underlying files.
-  <br>*Default:* lev2
-- **`mean_method`** — `string`, optional
-  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
-- **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
-- **`citation`** — `string`, optional
-  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
-
 ##### `SeriesRow`
 
 - **`station_id`** — `string`, **required**
@@ -555,6 +459,26 @@ How to credit this data in a publication.
 
 The attribution EBAS/ACTRIS and the contributing station PIs expect, in a form
 you can paste into a manuscript.
+
+## Common shapes
+
+Objects several tools return, defined identically in each. Every `$ref` above links here.
+
+### `Provenance`
+
+Attached to every tool result. Paraphrase-resistant only if it travels with the data.
+
+- **`source`** — `string`, optional
+  <br>*Default:* EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP
+- **`qc_level`** — `string`, optional
+  <br>EBAS QC level of the underlying files.
+  <br>*Default:* lev2
+- **`mean_method`** — `string`, optional
+  <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
+- **`coverage_basis`** — `string`, optional
+  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+- **`citation`** — `string`, optional
+  <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
 
 ## Prompts
 
