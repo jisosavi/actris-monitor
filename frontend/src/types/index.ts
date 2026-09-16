@@ -76,8 +76,8 @@ export interface NrtAvailability {
 // ── ACTRIS facility registry ─────────────────────────────────────────────────
 //
 // Served through our backend from the ACTRIS metadata API v3, keyed by EBAS
-// station code. These describe the station NOW — `labelling_status` and `active`
-// change as sites move through certification — so they are never stored per year.
+// station code. These describe the station NOW — `labelling_status` changes as
+// sites move through certification — so they are never stored per year.
 
 export interface ActrisFacility {
   identifier: string | null
@@ -85,8 +85,6 @@ export interface ActrisFacility {
   country_code: string | null
   altitude_m: number | null
   labelling_status: string | null
-  /** Registered as operating. Says nothing about whether data exists. */
-  active: boolean
   uri: string | null
 }
 
