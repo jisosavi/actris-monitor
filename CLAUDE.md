@@ -32,14 +32,25 @@ backend/          FastAPI app
     formatting.py   response envelope, provenance, shared rendering
     limits.py       rate limit + concurrency cap (stands in for auth)
   scripts/dump_mcp_tools.py      regenerates docs/mcp-reference.md
+  scripts/dump_openapi.py        regenerates docs/public/openapi.json (Public routes only)
 frontend/src/
   composables/useStationData.ts  axios instance + all TanStack Query hooks
   stores/stations.ts             Pinia UI state (year, variable, filters)
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
-docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
+docs/README.md                   what lives in docs/ and which files are generated
+docs/.vitepress/                 VitePress site: config, theme, Scalar component
+docs/index.md                    site landing page
+docs/mcp-getting-started.md      site page: connecting an MCP client
+docs/api.md                      site page: the Scalar REST reference
 docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
+docs/public/openapi.json         generated public REST surface — do not hand-edit
+docs/public/examples/            a real captured MCP exchange, embedded and tested
+docs/docs-site-plan.md           the docs site: decisions, build order, what is live
+docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 docs/actris-metadata-api-plan.md  plan for moving to the ACTRIS metadata API v3
+.github/workflows/ci.yml         tests, both --check gates, and the deployable build
+.github/assets/                  screenshots the README uses (not part of the site)
 ```
 
 ## Things that are easy to get wrong
@@ -100,6 +111,15 @@ it is the reason the app is usable.
 - Wavelength selection is nearest-neighbour with **no tolerance check**, so a file
   offering only a distant wavelength is silently accepted.
 
+**Every route carries exactly one tag** — `Public`, `Admin` or `Internal` — and
+`scripts/dump_openapi.py` publishes only the `Public` ones to
+`docs/public/openapi.json`, which the documentation site's Scalar page reads. A new
+route without a tag is published nowhere and appears in no reference; **tag it when
+you add it**. The tags are not `include_in_schema=False` on purpose: that flag
+would also hide the admin routes from this app's own `/docs`, and the operator
+running a fetch is exactly who needs them there. `--check` exits 1 when the
+committed document is stale, same as the MCP one.
+
 **The mutating endpoints require an admin token.** `POST /api/db/reset`,
 `/api/start-fetch` and `/api/backfill-networks` are guarded by `require_admin`,
 which checks an `X-Admin-Token` header against the `ADMIN_TOKEN` environment
@@ -131,6 +151,32 @@ forced; it only takes effect when `backfill_networks` runs.
 are cached 24 h and concurrency is capped at `_MAX_CONCURRENT = 20`. Don't raise
 that or add retry loops without a good reason.
 
+## The documentation site (`docs/`)
+
+VitePress, its own npm project (`cd docs && npm run build`), published to
+`isosavi.com/test/actris-monitor/docs/`. `docs/docs-site-plan.md` has the decisions
+and what is still open. Three things bite:
+
+**Build the frontend first.** `outDir` is `../frontend/dist/docs`, so one upload
+carries the dashboard and its docs together — but `vite build` empties
+`frontend/dist`, which takes the docs with it if the order is reversed.
+
+**The Scalar page needs `vp-raw` on its container.** VitePress installs a click
+handler on `window` with `{ capture: true }` and calls `preventDefault()` on every
+same-origin link, then resolves the hash itself. Scalar's endpoint links are hashes
+like `#GET/api/stations/{year}/{variable}`, which is not a valid selector — so the
+click is cancelled, nothing scrolls, and the URL and sidebar highlight still update
+because those happen first. It looks like a rendering bug. `router.js` skips links
+inside `.vp-raw`, which hands the click back. Stopping propagation in the container
+cannot work: capture on `window` runs before any listener inside it.
+
+**`cleanUrls` and `ignoreDeadLinks` both stay off.** The dashboard's directory on
+the server carries a catch-all rewrite, so a URL with no file behind it renders the
+map rather than 404ing — clean URLs would break every deep link, and a dead link in
+production would be invisible. `docs/public/.htaccess` turns that rewrite off inside
+the docs directory. VitePress validates file links but **not anchors**, so a wrong
+`#section` still ships silently.
+
 ## The MCP endpoint (`/mcp`)
 
 Same process, same FastAPI app, same SQLite connection as `/api/*`; agents speak
@@ -139,6 +185,12 @@ the design and the roadmap. Live today: **all six tools** (`get_coverage`,
 `find_station`, `get_series`, `get_ranking`, `get_network_stats`, `get_change`),
 **two resources** (`actris://catalog/stations`, `actris://citation`) and **one
 prompt** (`data_availability_briefing`).
+
+**CI:** `.github/workflows/ci.yml` runs the backend tests, both `--check` gates,
+the frontend type-check and lint, and builds the deployable site — which it uploads
+as a run artifact, so a deploy comes from a known commit rather than from whatever
+`frontend/dist` happens to hold. It also asserts `api.html` still renders without
+JavaScript.
 
 **Tests:** `cd backend && pytest` (install `requirements-dev.txt` first). They drive
 the tools through the SDK's in-process client — no HTTP, no port — and target the
@@ -171,20 +223,39 @@ protection with a localhost-only allowlist by default, so behind a real hostname
 every request gets `421 Misdirected Request` and the reason appears only in the
 server log. A bare hostname automatically also allows `<host>:*`.
 
+**The protocol era is chosen by a request header, and silently.** The SDK's
+`streamable_http_manager` routes on `MCP-Protocol-Version` **alone** — it never
+inspects the body, so putting the version in `params._meta` does nothing. A request
+without that header is served on the legacy leg, where the 2026-07-28 methods do not
+exist: `server/discover` answers `-32601` and capabilities report
+`listChanged: false`. Nothing errors; the client just gets an older protocol than the
+documentation describes. With the header, plus an `Mcp-Method` matching the body and
+the `_meta` envelope, the same server answers `listChanged: true` throughout. This
+cost an afternoon and produced a confident, wrong report that three documented claims
+were false — the claims were fine, the request was malformed. Verified curls for both
+paths are on the *Connecting a client* page.
+
 **Never call `database.init_db()` from the MCP layer.** It repoints the
 module-global connection without closing the old one *and* flips every
 `status='running'` fetch job to `'failed'`. The tools rely on the lifespan having
 done it once.
 
-**A new tool, resource or prompt is invisible to already-connected clients.** The
-server advertises `listChanged: true` on all three surfaces, but that promises a
-*push*, and the stateless 2026-07-28 transport has no server-to-client channel to
-push down — there is no session to notify. A client discovers the surface once, via
-`server/discover`, when its connection is established: adding the connector, app
-launch, toggling it off and on, or reconnecting after a network drop. Opening a new
-conversation re-probes nothing. So after deploying a new tool, **reconnect the
-connector** — otherwise you will be looking for something the client has no way to
-know exists.
+**A new tool, resource or prompt is invisible to already-connected clients.** An
+earlier version of this note claimed the stateless transport had no server-to-client
+channel at all. That was wrong: 2026-07-28 replaced the HTTP GET endpoint with
+`subscriptions/listen`, a long-lived POST-response stream that clients opt into per
+notification type (`toolsListChanged` and friends), and the SDK implements it. The
+reason is simpler and unchanged in effect:
+
+- **We never push**, because our tool list cannot change within a process lifetime.
+  It changes by redeploying, which drops every stream anyway.
+- **A client may not be listening.** `subscriptions/listen` is opt-in, and a client
+  that never opens the stream learns nothing.
+- **A client may be holding a cached list.** List results now carry `ttlMs` and
+  `cacheScope`, and a client may reuse `tools/list` until the TTL expires.
+
+So after deploying a new tool, **reconnect the connector**. Opening a new
+conversation re-probes nothing.
 
 Two design rules worth keeping: `mcp_server/tools.py` imports `database` and
 `variables` only — never FastAPI, never `main` — which is what would make a

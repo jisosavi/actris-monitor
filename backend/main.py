@@ -60,7 +60,44 @@ async def lifespan(app: FastAPI):
     await database.close_db()
 
 
-app = FastAPI(title="ACTRIS Monitor API", version="0.2.0", lifespan=lifespan)
+# Every route carries exactly one of these tags, and `scripts/dump_openapi.py`
+# publishes only the "Public" ones. Tagging rather than `include_in_schema=False`
+# is deliberate: the flag would also hide the admin routes from this app's own
+# /docs, and the operator running a fetch is precisely who needs them there.
+TAGS_METADATA = [
+    {
+        "name": "Public",
+        "description": (
+            "Read-only endpoints serving the dashboard. No authentication, no "
+            "upstream calls — every response comes from this service's own SQLite "
+            "database or from an in-process cache."
+        ),
+    },
+    {
+        "name": "Admin",
+        "description": (
+            "Mutating operations, guarded by an `X-Admin-Token` header checked "
+            "against the `ADMIN_TOKEN` environment variable. Fails closed: with "
+            "the variable unset these return 503 rather than being open. Not "
+            "published."
+        ),
+    },
+    {
+        "name": "Internal",
+        "description": (
+            "Operational endpoints for the dashboard's own plumbing, or debugging "
+            "aids that reach out to NILU. Undocumented on purpose — they are not "
+            "an interface anyone should build against. Not published."
+        ),
+    },
+]
+
+app = FastAPI(
+    title="ACTRIS Monitor API",
+    version="0.2.0",
+    lifespan=lifespan,
+    openapi_tags=TAGS_METADATA,
+)
 
 _ALLOWED_ORIGINS = _os.environ.get("ALLOWED_ORIGIN", "*")
 _ORIGINS_LIST = [o.strip() for o in _ALLOWED_ORIGINS.split(",")] if _ALLOWED_ORIGINS != "*" else ["*"]
@@ -100,7 +137,7 @@ def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
         raise HTTPException(401, "Invalid or missing admin token.")
 
 
-@app.get("/api/admin/check")
+@app.get("/api/admin/check", tags=["Admin"])
 async def admin_check(_: None = Depends(require_admin)):
     """Validate an admin token without side effects, so the UI can unlock itself."""
     return {"ok": True}
@@ -108,8 +145,51 @@ async def admin_check(_: None = Depends(require_admin)):
 
 # ── Existing data endpoints (now DB-backed) ───────────────────────────────────
 
-@app.get("/api/stations/{year}/{variable}")
+@app.get(
+    "/api/stations/{year}/{variable}",
+    tags=["Public"],
+    summary="Annual means for every station in one year",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": "FI0050R",
+                            "name": "Hyytiala",
+                            "lat": 61.847,
+                            "lon": 24.295,
+                            "country": "FI",
+                            "mean": 1743.281,
+                            "unit": "cm-3",
+                            "delta_pct": -4.12,
+                            "prev_mean": 1818.19,
+                            "data_coverage": 1.0,
+                            "networks": "ACTRIS,EMEP,GAW-WDCA",
+                        }
+                    ]
+                }
+            }
+        },
+        404: {"description": "No data stored for that year and variable."},
+    },
+)
 async def get_stations(year: int, variable: VariableKey):
+    """One annual mean per station, sorted highest to lowest.
+
+    `delta_pct` and `prev_mean` compare against the previous calendar year, and are
+    `null` where that year has no value for the station — which is common, since
+    coverage is uneven.
+
+    Two caveats that the numbers themselves do not carry:
+
+    - **The mean is unweighted across a station's files for the year.** Where a
+      station published more than one Level 2 file, they are averaged flat, and
+      those files may use different size cuts. A step between years can therefore
+      come from a file appearing rather than from the atmosphere.
+    - **`data_coverage` is a has-data flag, not a fraction.** It is `1.0` where any
+      value was found and `0.0` otherwise, despite the name.
+    """
     if variable not in VARIABLES:
         raise HTTPException(400, f"Unknown variable '{variable}'")
     if not 2000 <= year <= 2100:
@@ -124,8 +204,35 @@ async def get_stations(year: int, variable: VariableKey):
     return compute_annual_stats(raw, prev_raw, unit)
 
 
-@app.get("/api/network-stats/{year}/{variable}")
+@app.get(
+    "/api/network-stats/{year}/{variable}",
+    tags=["Public"],
+    summary="Distribution across all stations in one year",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "median": 1284.5,
+                        "q1": 743.02,
+                        "q3": 2260.15,
+                        "min": 92.4,
+                        "max": 8871.3,
+                        "n_stations": 47,
+                    }
+                }
+            }
+        },
+        404: {"description": "No statistics stored for that year and variable."},
+    },
+)
 async def get_network_stats(year: int, variable: VariableKey):
+    """Median, quartiles, range and station count across the network.
+
+    Computed over the stations that have a value, so `n_stations` is a count of
+    contributors rather than of the network — it moves year to year as coverage
+    changes, which matters when comparing one year's spread against another's.
+    """
     if variable not in VARIABLES:
         raise HTTPException(400, f"Unknown variable '{variable}'")
 
@@ -137,13 +244,38 @@ async def get_network_stats(year: int, variable: VariableKey):
 
 # ── Database status & fetch job endpoints ─────────────────────────────────────
 
-@app.get("/api/db-status")
+@app.get(
+    "/api/db-status",
+    tags=["Public"],
+    summary="Which year and variable combinations hold data",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "coverage": [
+                            {"year": 2023, "variable": "N", "fetched_at": "2026-09-14T09:12:44Z"},
+                            {"year": 2024, "variable": "N", "fetched_at": "2026-09-14T09:13:02Z"},
+                        ],
+                        "is_empty": False,
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_db_status():
+    """The availability matrix: what has been fetched, and when.
+
+    Worth reading before anything else. A year and variable missing from
+    `coverage` has no data at all rather than data worth retrying for, and the
+    most recent year or two is normally absent — Level 2 publication lags.
+    """
     coverage = await database.get_db_coverage()
     return {"coverage": coverage, "is_empty": len(coverage) == 0}
 
 
-@app.get("/api/fetch-progress")
+@app.get("/api/fetch-progress", tags=["Internal"])
 async def get_fetch_progress():
     job = await database.get_latest_job()
     if job is None:
@@ -160,7 +292,7 @@ class FetchRequest(BaseModel):
     force: bool = False
 
 
-@app.post("/api/start-fetch", dependencies=[Depends(require_admin)])
+@app.post("/api/start-fetch", dependencies=[Depends(require_admin)], tags=["Admin"])
 async def start_fetch(body: FetchRequest):
     if fetch_jobs.is_job_running():
         raise HTTPException(409, "A fetch job is already running")
@@ -175,7 +307,7 @@ async def start_fetch(body: FetchRequest):
     return {"started": True, "total": len(combos), "force": body.force}
 
 
-@app.post("/api/db/reset", dependencies=[Depends(require_admin)])
+@app.post("/api/db/reset", dependencies=[Depends(require_admin)], tags=["Admin"])
 async def reset_db():
     if fetch_jobs.is_job_running():
         raise HTTPException(409, "Cannot reset while a fetch job is running")
@@ -186,7 +318,7 @@ async def reset_db():
 _backfill_running = False
 
 
-@app.post("/api/backfill-networks", dependencies=[Depends(require_admin)])
+@app.post("/api/backfill-networks", dependencies=[Depends(require_admin)], tags=["Admin"])
 async def backfill_networks():
     global _backfill_running
     if _backfill_running:
@@ -207,7 +339,7 @@ async def backfill_networks():
         _backfill_running = False
 
 
-@app.get("/api/debug/station/{station_id}")
+@app.get("/api/debug/station/{station_id}", tags=["Internal"])
 async def debug_station(station_id: str):
     """Return stored DB coordinates + raw .das geographic attributes for a station."""
     rows = await database.get_station_records_for_id(station_id)
@@ -240,7 +372,7 @@ async def debug_station(station_id: str):
     }
 
 
-@app.get("/api/check-new-year")
+@app.get("/api/check-new-year", tags=["Internal"])
 async def check_new_year():
     years_by_var: dict[str, set[int]] = {}
     for var in VARIABLES:
@@ -254,12 +386,63 @@ async def check_new_year():
 
 # ── Misc endpoints ─────────────────────────────────────────────────────────────
 
-@app.get("/api/variables")
+@app.get(
+    "/api/variables",
+    tags=["Public"],
+    summary="The three measured variables",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": [
+                        {"key": "N", "label": "Particle number concentration", "unit": "cm-3"},
+                        {"key": "scattering", "label": "Light scattering coefficient", "unit": "Mm-1"},
+                        {"key": "absorption", "label": "Light absorption coefficient", "unit": "Mm-1"},
+                    ]
+                }
+            }
+        }
+    },
+)
 async def list_variables():
+    """Key, label and unit for each variable this service covers.
+
+    The `key` is what every other endpoint takes in its path. There are three and
+    there is no mechanism for adding a fourth at runtime — they are defined in
+    `variables.py`, which is also where the instrument and target wavelength for
+    each one lives.
+    """
     return [{"key": k, **{f: v[f] for f in ("label", "unit")}} for k, v in VARIABLES.items()]
 
 
-@app.get("/api/actris/facilities")
+@app.get(
+    "/api/actris/facilities",
+    tags=["Public"],
+    summary="ACTRIS facility metadata, by EBAS station code",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "fetched_at": "2026-09-16T08:00:11Z",
+                        "stale": False,
+                        "facilities": {
+                            "FI0050R": {
+                                "identifier": "FI0050R",
+                                "name": "Hyytiala",
+                                "country_code": "FI",
+                                "altitude_m": 181.0,
+                                "labelling_status": "labelled",
+                                "active": True,
+                                "uri": "https://data.actris.eu/facility/...",
+                            }
+                        },
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_actris_facilities():
     """ACTRIS facility metadata, keyed by EBAS station code.
 
@@ -272,7 +455,26 @@ async def get_actris_facilities():
     return await actris_md.get_facilities()
 
 
-@app.get("/api/nrt/stations")
+@app.get(
+    "/api/nrt/stations",
+    tags=["Public"],
+    summary="Stations with EBAS near-real-time data",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "fetched_at": "2026-09-16T08:00:11Z",
+                        "stale": False,
+                        "stations": [
+                            {"id": "FI0050R", "name": "Hyytiala", "variables": ["N", "scattering"]}
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_nrt_stations():
     """Which stations have EBAS near-real-time data for our three variables.
 
@@ -284,12 +486,12 @@ async def get_nrt_stations():
     return await nrt.get_availability()
 
 
-@app.get("/api/warmup-status")
+@app.get("/api/warmup-status", tags=["Internal"])
 async def get_warmup_status():
     return {"done": 1, "total": 1, "complete": True}
 
 
-@app.get("/health")
+@app.get("/health", tags=["Internal"])
 async def health():
     return {"status": "ok"}
 

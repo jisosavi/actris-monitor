@@ -1,0 +1,12 @@
+{
+  "method": "tools/call",
+  "params": {
+    "name": "get_series",
+    "arguments": {
+      "stations": ["FI0050R", "FR0022R"],
+      "variables": ["N"],
+      "start": "2021",
+      "end": "2024"
+    }
+  }
+}

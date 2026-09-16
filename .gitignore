@@ -33,3 +33,7 @@ data/
 
 # Claude Code — personal settings stay local, shared .claude/settings.json is committable
 .claude/settings.local.json
+
+# VitePress docs site (docs/)
+docs/.vitepress/dist/
+docs/.vitepress/cache/

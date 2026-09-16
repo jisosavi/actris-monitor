@@ -1,0 +1,24 @@
+# Neutralise the dashboard's catch-all inside the docs directory.
+#
+# /test/actris-monitor/ carries a rewrite that serves the dashboard's index.html
+# for any path that is not a real file. An .htaccess applies to subdirectories,
+# so the docs inherit it — and a *directory* is not a file, which means a request
+# for /docs/ was answered with the dashboard (767 bytes of SPA shell) instead of
+# reaching DirectoryIndex. Same page title, so it looked like it worked.
+#
+# Turning the rewrite off here makes this directory behave like any other on the
+# server: /docs/ resolves to index.html, and a missing page is an honest 404
+# rather than a silent redirect to the map.
+#
+# This is also why cleanUrls stays off in .vitepress/config.ts — with the rewrite
+# gone there is nothing to map /mcp-reference onto /mcp-reference.html.
+RewriteEngine Off
+
+DirectoryIndex index.html
+
+# The markdown sources ship next to the rendered pages for agents (see buildEnd in
+# .vitepress/config.ts). Apache has no type for .md by default, which makes a
+# browser download the file instead of showing it and gives a fetching client
+# application/octet-stream.
+AddType text/markdown .md
+AddType application/json .json

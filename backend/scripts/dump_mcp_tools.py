@@ -39,20 +39,15 @@ PREAMBLE = f"""\
 
 {BANNER}
 
-The tools, resources and prompts served at `/mcp`. Every description below is the
-text the client and model actually receive, so this document and the agent's own
-instructions cannot drift apart — both come from `backend/mcp_server/`.
+Every tool, resource and prompt served at `/mcp`, with the exact text the client
+and model receive. Generated from `backend/mcp_server/`, so this page and the
+agent's own instructions cannot drift apart.
 
-Endpoint, connection instructions and the rate limits are in the README; the
-operational gotchas are in `CLAUDE.md`; the design and the roadmap for what is not
-built yet are in `docs/mcp-server-plan.md`.
-
-Regenerate with:
-
-```bash
-cd backend && python scripts/dump_mcp_tools.py
-```
+New here? [Connecting a client](mcp-getting-started.md) covers the endpoint, the
+rate limits and what to ask first. The reasoning behind the data — and what the
+annual means do not say — is in [the design notes](mcp-server-plan.md).
 """
+
 
 
 def type_of(schema: dict[str, Any]) -> str:
@@ -61,6 +56,12 @@ def type_of(schema: dict[str, Any]) -> str:
         # Just the value: it reads as a fixed value on its own, and appending
         # "(constant)" turns an array of one into `"annual"` (constant)[].
         return f"`{json.dumps(schema['const'])}`"
+    # An enum is the whole point of the field, and rendering it as `string` cost a
+    # careful reader the right conclusion: a reviewer read this page and reported
+    # that the tools take an undocumented bare string. The model was always given
+    # the enum — this document was not showing it.
+    if "enum" in schema:
+        return " | ".join(f"`{json.dumps(v)}`" for v in schema["enum"])
     if "$ref" in schema:
         name = schema["$ref"].rsplit("/", 1)[-1]
         return f"[`{name}`](#{name.lower()})"
@@ -109,24 +110,51 @@ def render_fields(schema: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_defs(schema: dict[str, Any]) -> list[str]:
-    """Render the nested models a tool's output refers to."""
-    defs: dict[str, Any] = schema.get("$defs", {})
+def render_shape(name: str, schema: dict[str, Any], level: str) -> list[str]:
+    lines = [f"{level} `{name}`", ""]
+    if desc := schema.get("description"):
+        lines += [desc, ""]
+    lines += render_fields(schema)
+    lines.append("")
+    return lines
+
+
+def render_defs(schema: dict[str, Any], skip: set[str]) -> list[str]:
+    """Render the nested models a tool's output refers to, minus the shared ones."""
+    defs = {k: v for k, v in schema.get("$defs", {}).items() if k not in skip}
     if not defs:
         return []
     lines = ["#### Shapes", ""]
     for name, sub in sorted(defs.items()):
-        lines.append(f"##### `{name}`")
-        lines.append("")
-        if desc := sub.get("description"):
-            lines.append(desc)
-            lines.append("")
-        lines.extend(render_fields(sub))
-        lines.append("")
+        lines += render_shape(name, sub, "#####")
     return lines
 
 
-def render_tool(tool: Any) -> list[str]:
+def shared_defs(tools: list[Any]) -> dict[str, Any]:
+    """Definitions that appear in more than one tool and are identical in each.
+
+    Hoisting these is not tidying. Six tools each rendered their own
+    `##### \`Provenance\`` heading, so the anchors came out as `#provenance`,
+    `#provenance-1` … `#provenance-5` — while every `$ref` link rendered by
+    `type_of` pointed at `#provenance`. Five of the six tools linked to a
+    different tool's copy of the shape, and it looked like it worked because the
+    destination was byte-identical.
+
+    A definition that differs between tools stays where it is: the duplication is
+    then carrying information, and the anchors are genuinely distinct.
+    """
+    seen: dict[str, list[Any]] = {}
+    for tool in tools:
+        for name, body in (tool.output_schema or {}).get("$defs", {}).items():
+            seen.setdefault(name, []).append(body)
+    return {
+        name: bodies[0]
+        for name, bodies in seen.items()
+        if len(bodies) > 1 and all(b == bodies[0] for b in bodies)
+    }
+
+
+def render_tool(tool: Any, shared: set[str]) -> list[str]:
     ann = tool.annotations
     hints = []
     if ann is not None:
@@ -135,7 +163,14 @@ def render_tool(tool: Any) -> list[str]:
         if ann.open_world_hint is False:
             hints.append("closed-world (answers from this database, not the web)")
 
-    lines = [f"### `{tool.name}`" + (f" — {tool.title}" if tool.title else ""), ""]
+    # The title goes on its own line rather than after an em dash in the heading:
+    # `### \`get_change\` — Change between periods` produces the anchor
+    # #get-change-—-change-between-periods, which is fragile to paste and ugly in
+    # a URL. An explicit {#slug} would fix the site and leak literal braces onto
+    # GitHub, which reads the same file.
+    lines = [f"### `{tool.name}`", ""]
+    if tool.title:
+        lines += [f"**{tool.title}**", ""]
     if hints:
         lines += [f"*{', '.join(hints)}*", ""]
     if tool.description:
@@ -150,7 +185,7 @@ def render_tool(tool: Any) -> list[str]:
         lines += ["#### Returns", ""]
         lines += render_fields(out)
         lines.append("")
-        lines += render_defs(out)
+        lines += render_defs(out, shared)
     return lines
 
 
@@ -173,13 +208,14 @@ async def build() -> str:
         lines.append("")
 
     tools = sorted(await mcp.list_tools(), key=lambda t: t.name)
+    shared = shared_defs(tools)
     lines += ["## Tools", "", "Verbs the *model* calls.", ""]
     # No count of what's *missing* — a hardcoded "seven more" is exactly the kind of
     # number that goes stale the first time a tool lands.
     lines.append(f"{len(tools)} tool{'s' if len(tools) != 1 else ''} served today. "
                  "Further tools are designed in `docs/mcp-server-plan.md`.\n")
     for tool in tools:
-        lines.extend(render_tool(tool))
+        lines.extend(render_tool(tool, set(shared)))
 
     # Each entry is its own subsection rather than a bullet: descriptions run to
     # several paragraphs, and a paragraph inside a list item breaks the list.
@@ -193,10 +229,23 @@ async def build() -> str:
             "",
         ]
         for r in sorted(resources, key=lambda r: str(r.uri)):
-            lines += [f"### `{r.uri}`" + (f" — {r.title}" if r.title else ""), ""]
+            lines += [f"### `{r.uri}`", ""]
+            if r.title:
+                lines += [f"**{r.title}**", ""]
             lines += [f"*{r.mime_type}*", ""] if r.mime_type else []
             if r.description:
                 lines += [r.description, ""]
+
+    if shared:
+        lines += [
+            "## Common shapes",
+            "",
+            "Objects several tools return, defined identically in each. Every "
+            "`$ref` above links here.",
+            "",
+        ]
+        for name, body in sorted(shared.items()):
+            lines += render_shape(name, body, "###")
 
     if prompts := await mcp.list_prompts():
         lines += [
@@ -208,7 +257,9 @@ async def build() -> str:
             "",
         ]
         for p in sorted(prompts, key=lambda p: p.name):
-            lines += [f"### `{p.name}`" + (f" — {p.title}" if p.title else ""), ""]
+            lines += [f"### `{p.name}`", ""]
+            if p.title:
+                lines += [f"**{p.title}**", ""]
             if p.description:
                 lines += [p.description, ""]
             if p.arguments:

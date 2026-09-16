@@ -71,13 +71,35 @@ class CoveragePeriod(BaseModel):
     fetched_at: str = Field(description="When this period was retrieved from NILU (ISO 8601, UTC).")
 
 
-class CoverageResult(BaseModel):
+class ProvenancedResult(BaseModel):
+    """A result that always carries its provenance.
+
+    The field has a default, so it is present on every response the client ever
+    sees — but a default makes Pydantic mark it *optional* in the JSON Schema,
+    which contradicted every description saying it is always attached. A strict
+    client or a typed code generator would have treated it as maybe-absent.
+
+    The output schema describes the wire format, not the Python constructor, and
+    on the wire it is unconditional. So the schema says required.
+    """
+
+    provenance: Provenance = Field(default_factory=Provenance)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):  # type: ignore[override]
+        schema = handler(core_schema)
+        required = schema.setdefault("required", [])
+        if "provenance" not in required:
+            required.append("provenance")
+        return schema
+
+
+class CoverageResult(ProvenancedResult):
     variables: list[VariableInfo]
     periods: list[CoveragePeriod]
     resolutions_available: list[Resolution] = ["annual"]
     truncated: bool = False
     note: str | None = None
-    provenance: Provenance = Provenance()
 
 
 async def get_coverage() -> CoverageResult:
@@ -141,6 +163,18 @@ CountryFilter = Annotated[
 NetworkFilter = Annotated[
     str | None,
     Field(default=None, description="One of ACTRIS, EMEP, GAW-WDCA."),
+]
+# The enum reaches the model through the type, but nothing said what the three
+# keys mean. A model choosing between them had the labels only in get_coverage.
+VariableParam = Annotated[
+    VariableKey,
+    Field(
+        description=(
+            "'N' is particle number concentration (cm-3); 'scattering' and "
+            "'absorption' are light coefficients (Mm-1). get_coverage returns each "
+            "one's full definition, including instrument and wavelength."
+        )
+    ),
 ]
 
 
@@ -215,14 +249,13 @@ class StationMatch(BaseModel):
     actris_url: str | None = Field(default=None, description="The station's page in the ACTRIS Data Portal.")
 
 
-class FindStationResult(BaseModel):
+class FindStationResult(ProvenancedResult):
     matches: list[StationMatch]
     n_matched: int
     truncated: bool = False
     n_remaining: int = 0
     hint: str | None = None
     note: str | None = None
-    provenance: Provenance = Provenance()
 
 
 async def find_station(
@@ -230,7 +263,16 @@ async def find_station(
         str | None,
         Field(default=None, description="Station name or EBAS code, in any spelling: 'Hyytiala' finds 'Hyytiälä'."),
     ] = None,
-    stations: StationsFilter = None,
+    stations: Annotated[
+        list[str] | None,
+        Field(
+            default=None,
+            description=(
+                "Restrict the search to these EBAS station codes. Useful for "
+                "checking what a known set holds, not for resolving names."
+            ),
+        ),
+    ] = None,
     country: CountryFilter = None,
     network: NetworkFilter = None,
     has_data_for: Annotated[
@@ -242,8 +284,8 @@ async def find_station(
     """Resolve a station name or code, or browse the catalogue by filters.
 
     Start here: station codes like FI0050R are what every other tool takes, and no
-    one types them from memory. A blank query with filters is a browse; a query with
-    filters is a search within them.
+    one types them from memory. A blank query browses everything the filters allow;
+    a query searches within them.
 
     Matching is on text — code and name, case- and accent-insensitive. It cannot
     interpret a description like "Finnish forest site"; for those, filter by country
@@ -378,7 +420,7 @@ class SeriesRow(BaseModel):
     )
 
 
-class SeriesResult(BaseModel):
+class SeriesResult(ProvenancedResult):
     rows: list[SeriesRow]
     period_start: str
     period_end: str
@@ -390,7 +432,6 @@ class SeriesResult(BaseModel):
     hint: str | None = None
     note: str | None = None
     error: str | None = None
-    provenance: Provenance = Provenance()
 
 
 async def get_series(
@@ -400,7 +441,12 @@ async def get_series(
     ],
     variables: Annotated[
         list[VariableKey] | None,
-        Field(default=None, description="Defaults to all three."),
+        Field(
+            default=None,
+            description=(
+                "Any of 'N', 'scattering', 'absorption'. Defaults to all three."
+            ),
+        ),
     ] = None,
     start: Annotated[
         str | None,
@@ -533,7 +579,7 @@ class RankingRow(BaseModel):
     mean: float
 
 
-class RankingResult(BaseModel):
+class RankingResult(ProvenancedResult):
     variable: str
     unit: str
     period_start: str
@@ -549,12 +595,11 @@ class RankingResult(BaseModel):
     error: str | None = None
     available_periods: str | None = None
     suggestion: str | None = None
-    provenance: Provenance = Provenance()
 
 
 async def get_ranking(
     period: Annotated[str, Field(description="ISO date or year, e.g. '2020'.")],
-    variable: VariableKey,
+    variable: VariableParam,
     stations: StationsFilter = None,
     country: CountryFilter = None,
     network: NetworkFilter = None,
@@ -639,7 +684,7 @@ class PeriodStats(BaseModel):
     n_stations: int = Field(default=0, description="Stations with a usable value in this period, after filters.")
 
 
-class NetworkStatsResult(BaseModel):
+class NetworkStatsResult(ProvenancedResult):
     variable: str
     unit: str
     periods: list[PeriodStats] = []
@@ -647,11 +692,10 @@ class NetworkStatsResult(BaseModel):
     error: str | None = None
     available_periods: str | None = None
     suggestion: str | None = None
-    provenance: Provenance = Provenance()
 
 
 async def get_network_stats(
-    variable: VariableKey,
+    variable: VariableParam,
     start: Annotated[str | None, Field(default=None, description="ISO date or year. Defaults to the earliest period with data.")] = None,
     end: Annotated[str | None, Field(default=None, description="ISO date or year. Defaults to the latest period with data.")] = None,
     stations: StationsFilter = None,
@@ -721,7 +765,7 @@ class ChangeRow(BaseModel):
     )
 
 
-class ChangeResult(BaseModel):
+class ChangeResult(ProvenancedResult):
     variable: str
     unit: str
     from_period_start: str
@@ -737,11 +781,10 @@ class ChangeResult(BaseModel):
     hint: str | None = None
     note: str | None = None
     error: str | None = None
-    provenance: Provenance = Provenance()
 
 
 async def get_change(
-    variable: VariableKey,
+    variable: VariableParam,
     from_period: Annotated[str, Field(description="ISO date or year, e.g. '2005'.")],
     to_period: Annotated[str, Field(description="ISO date or year, e.g. '2020'.")],
     stations: StationsFilter = None,

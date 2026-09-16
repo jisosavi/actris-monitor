@@ -2,7 +2,8 @@
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useFetchProgress } from '@/composables/useStationData'
 
-const props = defineProps<{ fullScreen: boolean }>()
+// Not bound: <script setup> exposes props to the template directly.
+defineProps<{ fullScreen: boolean }>()
 
 const { data: job } = useFetchProgress()
 

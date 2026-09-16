@@ -113,11 +113,6 @@ function coord(value: number, positive: string, negative: string) {
       <div v-if="facility.labelling_status" class="detail-status">
         Labelling: <span class="detail-status-val">{{ facility.labelling_status }}</span>
       </div>
-      <div v-if="!facility.active" class="detail-inactive">
-        Not currently registered as operating. This describes the ACTRIS registry, not
-        the data — measurements already collected remain valid, and some unregistered
-        stations still report.
-      </div>
       <a
         v-if="facility.uri"
         class="detail-link detail-link--actris"
@@ -229,7 +224,6 @@ function coord(value: number, positive: string, negative: string) {
 .detail-alt { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
 .detail-status { font-size: 12px; color: var(--text); margin-top: 3px; }
 .detail-status-val { font-weight: 600; }
-.detail-inactive { font-size: 10px; color: var(--text-muted); line-height: 1.5; margin-top: 7px; }
 .detail-link--actris { color: var(--accent); }
 .detail-link--actris:focus-visible { outline: 2px solid var(--accent); }
 

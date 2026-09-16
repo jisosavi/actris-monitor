@@ -1,0 +1,101 @@
+{
+  "rows": [
+    {
+      "station_id": "FI0050R",
+      "station_name": "Hyytiälä",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2021-01-01",
+      "period_end": "2021-12-31",
+      "resolution": "annual",
+      "mean": 1976.8460168319116
+    },
+    {
+      "station_id": "FI0050R",
+      "station_name": "Hyytiälä",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2022-01-01",
+      "period_end": "2022-12-31",
+      "resolution": "annual",
+      "mean": 1436.8383267044653
+    },
+    {
+      "station_id": "FI0050R",
+      "station_name": "Hyytiälä",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2023-01-01",
+      "period_end": "2023-12-31",
+      "resolution": "annual",
+      "mean": 1908.5638268948655
+    },
+    {
+      "station_id": "FI0050R",
+      "station_name": "Hyytiälä",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "resolution": "annual",
+      "mean": null
+    },
+    {
+      "station_id": "FR0022R",
+      "station_name": "Observatoire Perenne de l'Environnement",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2021-01-01",
+      "period_end": "2021-12-31",
+      "resolution": "annual",
+      "mean": 2945.981681009077
+    },
+    {
+      "station_id": "FR0022R",
+      "station_name": "Observatoire Perenne de l'Environnement",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2022-01-01",
+      "period_end": "2022-12-31",
+      "resolution": "annual",
+      "mean": 3036.861572613623
+    },
+    {
+      "station_id": "FR0022R",
+      "station_name": "Observatoire Perenne de l'Environnement",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2023-01-01",
+      "period_end": "2023-12-31",
+      "resolution": "annual",
+      "mean": 3165.3653427638737
+    },
+    {
+      "station_id": "FR0022R",
+      "station_name": "Observatoire Perenne de l'Environnement",
+      "variable": "N",
+      "unit": "cm⁻³",
+      "period_start": "2024-01-01",
+      "period_end": "2024-12-31",
+      "resolution": "annual",
+      "mean": 2522.2362304356902
+    }
+  ],
+  "period_start": "2021-01-01",
+  "period_end": "2024-12-31",
+  "resolution": "annual",
+  "n_stations_requested": 2,
+  "n_stations_returned": 2,
+  "truncated": false,
+  "n_remaining": 0,
+  "hint": null,
+  "note": null,
+  "error": null,
+  "provenance": {
+    "source": "EBAS / ACTRIS in-situ aerosol data, retrieved from the NILU THREDDS server over OPeNDAP",
+    "qc_level": "lev2",
+    "mean_method": "Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.",
+    "coverage_basis": "Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.",
+    "citation": "EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use."
+  }
+}
