@@ -12,7 +12,7 @@
  * copy containing only the Public routes, and a docs build should not depend on
  * a deploy being reachable.
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ApiReference } from '@scalar/api-reference'
 import '@scalar/api-reference/style.css'
 import { useData, withBase } from 'vitepress'
@@ -32,10 +32,35 @@ const configuration = computed(() => ({
   // concerned and needs no CORS change.
   hideClientButton: false,
 }))
+
+/**
+ * Keep VitePress's router out of Scalar's internal navigation.
+ *
+ * VitePress listens for anchor clicks on `window` and handles same-page hash
+ * links itself, resolving the target and scrolling to it. Scalar's endpoint
+ * links use hashes like `#GET/api/network-stats/{year}/{variable}` — which is
+ * not a valid CSS selector, so VitePress's handler throws on the braces and the
+ * click dies there. The hash and the sidebar highlight update, the content pane
+ * never moves. Searching still worked, because that path never goes through a
+ * link click, which is what made it look like a rendering bug rather than a
+ * routing one.
+ *
+ * Listening on the bubble phase, not capture: Scalar's own handlers sit on the
+ * link and must run first. This only stops the event before it reaches window.
+ */
+const host = ref<HTMLElement | null>(null)
+
+function keepHashLinksLocal(event: MouseEvent) {
+  const link = (event.target as HTMLElement | null)?.closest?.('a')
+  if (link?.getAttribute('href')?.startsWith('#')) event.stopPropagation()
+}
+
+onMounted(() => host.value?.addEventListener('click', keepHashLinksLocal))
+onBeforeUnmount(() => host.value?.removeEventListener('click', keepHashLinksLocal))
 </script>
 
 <template>
-  <div class="scalar-host">
+  <div ref="host" class="scalar-host">
     <ApiReference :configuration="configuration" />
   </div>
 </template>

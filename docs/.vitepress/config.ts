@@ -5,6 +5,11 @@ import type { Plugin } from 'vite'
 // preview can be built for a different location without editing this file.
 const BASE = process.env.DOCS_BASE ?? '/test/actris-monitor/docs/'
 
+// Built straight into the dashboard's output directory, so one upload carries
+// both. The frontend build must run FIRST — Vite empties frontend/dist, which
+// would take the docs with it.
+const OUT_DIR = process.env.DOCS_OUT_DIR ?? '../frontend/dist/docs'
+
 const REPO = 'https://github.com/jisosavi/actris-monitor'
 const APP = 'https://www.isosavi.com/test/actris-monitor/'
 const MCP = 'https://actris-monitor-production.up.railway.app/mcp'
@@ -51,6 +56,7 @@ export default defineConfig({
   description:
     'Annual-mean aerosol measurements from the EBAS/ACTRIS network, for agents and API clients.',
   base: BASE,
+  outDir: OUT_DIR,
   lang: 'en-GB',
 
   // Deliberately OFF. The dashboard's directory on the server carries a catch-all
@@ -74,6 +80,7 @@ export default defineConfig({
 
   themeConfig: {
     nav: [
+      { text: 'Connect an agent', link: '/mcp-getting-started' },
       { text: 'MCP reference', link: '/mcp-reference' },
       { text: 'REST API', link: '/api' },
       { text: 'Design notes', link: '/mcp-server-plan' },
@@ -83,7 +90,10 @@ export default defineConfig({
     sidebar: [
       {
         text: 'Model Context Protocol',
-        items: [{ text: 'Tools, resources and prompts', link: '/mcp-reference' }],
+        items: [
+          { text: 'Connecting a client', link: '/mcp-getting-started' },
+          { text: 'Tools, resources and prompts', link: '/mcp-reference' },
+        ],
       },
       {
         text: 'REST API',

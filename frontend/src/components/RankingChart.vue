@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { BarChart } from 'echarts/charts'
@@ -87,13 +87,18 @@ const option = computed(() => {
       backgroundColor: 'rgba(15, 24, 41, 0.95)',
       borderColor: '#1e3052',
       textStyle: { color: '#e2e8f0', fontSize: 12 },
-      formatter: (params: any[]) => {
+      // Only the three fields this tooltip reads, rather than echarts'
+      // full callback param type, which is not exported from a stable path.
+      formatter: (params: { dataIndex: number; name: string; value: number }[]) => {
         const p = params[0]
-        const station = stations[n - 1 - (p.dataIndex as number)]
-        if (!station) return p.name as string
+        // echarts always passes at least one entry for an axis trigger, but the
+        // index signature does not promise it and the casts below hid that.
+        if (!p) return ''
+        const station = stations[n - 1 - p.dataIndex]
+        if (!station) return p.name
         const val = isConcentration
-          ? `${(p.value as number).toFixed(1)} ${unit.value}`
-          : `${(p.value as number) > 0 ? '+' : ''}${(p.value as number).toFixed(1)}%`
+          ? `${p.value.toFixed(1)} ${unit.value}`
+          : `${p.value > 0 ? '+' : ''}${p.value.toFixed(1)}%`
         const delta =
           station.delta_pct != null
             ? `<br/><span style="color:${station.delta_pct > 0 ? '#f43f5e' : '#10b981'}">${station.delta_pct > 0 ? '▲' : '▼'} ${Math.abs(station.delta_pct).toFixed(1)}% YoY</span>`

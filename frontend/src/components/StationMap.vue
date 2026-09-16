@@ -81,7 +81,8 @@ const isNoData = computed(() => {
   if (stationsQuery.isError.value) return true
   const data = stationsQuery.data.value
   if (data === undefined) return false
-  return data.length === 0 || data.every(s => s.mean === null)
+  // `every` is already true for an empty array, so no length check is needed.
+  return data.every(s => s.mean === null)
 })
 
 function lerp(a: number, b: number, t: number) { return a + (b - a) * t }
