@@ -1,0 +1,80 @@
+/**
+ * The dashboard's palette, mapped onto VitePress's theme variables.
+ *
+ * The values are COPIED from frontend/src/assets/main.css rather than imported.
+ * That file pulls in Tailwind, MapLibre's stylesheet and tw-animate-css, none of
+ * which belong in a documentation build. A dozen duplicated hex values that drift
+ * make the site slightly off-brand; a docs build coupled to the dashboard's CSS
+ * pipeline would be a real problem.
+ *
+ * Fonts are left alone — VitePress already ships Inter, which is what the
+ * dashboard loads from Google Fonts.
+ */
+
+:root {
+  /* Brand — --accent / --accent-hover / --accent-light in main.css */
+  --vp-c-brand-1: #303193;
+  --vp-c-brand-2: #252880;
+  --vp-c-brand-3: #303193;
+  --vp-c-brand-soft: rgba(48, 49, 147, 0.08);
+
+  /* Surfaces — --surface / --bg / --surface-2 */
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #eef1f7;
+  --vp-c-bg-soft: #f4f7fc;
+  --vp-c-bg-elv: #ffffff;
+
+  /* Text — --text / --text-muted */
+  --vp-c-text-1: #1a1d3d;
+  --vp-c-text-2: #6b7a99;
+  --vp-c-text-3: #8d99b5;
+
+  /* Lines — --border */
+  --vp-c-divider: #d8dff0;
+  --vp-c-border: #d8dff0;
+  --vp-c-gutter: #d8dff0;
+
+  /* Semantic, from --positive / --negative */
+  --vp-c-success-1: #1a7a52;
+  --vp-c-danger-1: #bf3030;
+}
+
+/**
+ * Dark mode is DERIVED here, not copied.
+ *
+ * main.css has a .dark block, but it is the stock shadcn neutral palette that
+ * came with the scaffold — it contains no brand colour at all, and nothing in the
+ * dashboard ever adds the .dark class, so it has never rendered. Copying an
+ * unused palette would import a decision nobody made. These are built around the
+ * same indigo instead, lightened until it reads on a dark background.
+ */
+.dark {
+  --vp-c-brand-1: #9d9ef5;
+  --vp-c-brand-2: #b4b5f8;
+  --vp-c-brand-3: #4c4ec2;
+  --vp-c-brand-soft: rgba(157, 158, 245, 0.14);
+
+  --vp-c-bg: #14162e;
+  --vp-c-bg-alt: #101228;
+  --vp-c-bg-soft: #1b1e3a;
+  --vp-c-bg-elv: #1b1e3a;
+
+  --vp-c-text-1: #eef1f7;
+  --vp-c-text-2: #a9b4cd;
+  --vp-c-text-3: #7d88a5;
+
+  --vp-c-divider: #2c3157;
+  --vp-c-border: #2c3157;
+  --vp-c-gutter: #2c3157;
+
+  --vp-c-success-1: #5fc79b;
+  --vp-c-danger-1: #f08a8a;
+}
+
+/* Buttons and the home hero pick up the brand through these. */
+:root {
+  --vp-button-brand-bg: var(--vp-c-brand-3);
+  --vp-button-brand-hover-bg: var(--vp-c-brand-2);
+  --vp-button-brand-active-bg: var(--vp-c-brand-2);
+  --vp-home-hero-name-color: var(--vp-c-brand-1);
+}
