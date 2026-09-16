@@ -1,0 +1,336 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ACTRIS Monitor API",
+    "version": "0.2.0",
+    "description": "The read-only HTTP surface behind the [ACTRIS Monitor dashboard](https://www.isosavi.com/test/actris-monitor/).\n\nAnnual-mean in-situ aerosol measurements from the EBAS/ACTRIS European research\nnetwork — three variables, Level 2 quality-assured only, 2000 onwards. Responses\nare served from this service's own database; no request here reaches NILU.\n\n**Data is annual.** One mean per station, variable and calendar year. Monthly or\ndaily figures do not exist and cannot be derived from these endpoints.\n\n**Two caveats the numbers do not carry.** A station-year's mean is unweighted\nacross that station's files and may mix size cuts, so a step between years can\ncome from a file appearing rather than from the atmosphere. And no field states\nwhat fraction of a year was actually observed — `data_coverage` is a has-data\nflag despite its name. Both are explained in the\n[design notes](https://www.isosavi.com/test/actris-monitor/docs/mcp-server-plan.html).\n\n**Please cite the data.** Measurements are contributed by station principal\ninvestigators; acknowledge them and EBAS/ACTRIS in any published use.\n\nAgents are better served by the [MCP endpoint](https://www.isosavi.com/test/actris-monitor/docs/mcp-reference.html),\nwhich carries provenance on every response.\n\nThis document is generated from the running application by\n`backend/scripts/dump_openapi.py` and lists only the endpoints tagged `Public`.\nAdministrative and internal routes exist and are deliberately absent.\n",
+    "x-generated-by": "backend/scripts/dump_openapi.py — do not edit by hand"
+  },
+  "paths": {
+    "/api/stations/{year}/{variable}": {
+      "get": {
+        "summary": "Annual means for every station in one year",
+        "description": "One annual mean per station, sorted highest to lowest.\n\n`delta_pct` and `prev_mean` compare against the previous calendar year, and are\n`null` where that year has no value for the station — which is common, since\ncoverage is uneven.\n\nTwo caveats that the numbers themselves do not carry:\n\n- **The mean is unweighted across a station's files for the year.** Where a\n  station published more than one Level 2 file, they are averaged flat, and\n  those files may use different size cuts. A step between years can therefore\n  come from a file appearing rather than from the atmosphere.\n- **`data_coverage` is a has-data flag, not a fraction.** It is `1.0` where any\n  value was found and `0.0` otherwise, despite the name.",
+        "operationId": "get_stations_api_stations__year___variable__get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Year"
+            }
+          },
+          {
+            "name": "variable",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "N",
+                "scattering",
+                "absorption"
+              ],
+              "type": "string",
+              "title": "Variable"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "id": "FI0050R",
+                    "name": "Hyytiala",
+                    "lat": 61.847,
+                    "lon": 24.295,
+                    "country": "FI",
+                    "mean": 1743.281,
+                    "unit": "cm-3",
+                    "delta_pct": -4.12,
+                    "prev_mean": 1818.19,
+                    "data_coverage": 1.0,
+                    "networks": "ACTRIS,EMEP,GAW-WDCA"
+                  }
+                ]
+              }
+            }
+          },
+          "404": {
+            "description": "No data stored for that year and variable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/network-stats/{year}/{variable}": {
+      "get": {
+        "summary": "Distribution across all stations in one year",
+        "description": "Median, quartiles, range and station count across the network.\n\nComputed over the stations that have a value, so `n_stations` is a count of\ncontributors rather than of the network — it moves year to year as coverage\nchanges, which matters when comparing one year's spread against another's.",
+        "operationId": "get_network_stats_api_network_stats__year___variable__get",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Year"
+            }
+          },
+          {
+            "name": "variable",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "N",
+                "scattering",
+                "absorption"
+              ],
+              "type": "string",
+              "title": "Variable"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "median": 1284.5,
+                  "q1": 743.02,
+                  "q3": 2260.15,
+                  "min": 92.4,
+                  "max": 8871.3,
+                  "n_stations": 47
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No statistics stored for that year and variable."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/db-status": {
+      "get": {
+        "summary": "Which year and variable combinations hold data",
+        "description": "The availability matrix: what has been fetched, and when.\n\nWorth reading before anything else. A year and variable missing from\n`coverage` has no data at all rather than data worth retrying for, and the\nmost recent year or two is normally absent — Level 2 publication lags.",
+        "operationId": "get_db_status_api_db_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "coverage": [
+                    {
+                      "year": 2023,
+                      "variable": "N",
+                      "fetched_at": "2026-09-14T09:12:44Z"
+                    },
+                    {
+                      "year": 2024,
+                      "variable": "N",
+                      "fetched_at": "2026-09-14T09:13:02Z"
+                    }
+                  ],
+                  "is_empty": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/variables": {
+      "get": {
+        "summary": "The three measured variables",
+        "description": "Key, label and unit for each variable this service covers.\n\nThe `key` is what every other endpoint takes in its path. There are three and\nthere is no mechanism for adding a fourth at runtime — they are defined in\n`variables.py`, which is also where the instrument and target wavelength for\neach one lives.",
+        "operationId": "list_variables_api_variables_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": [
+                  {
+                    "key": "N",
+                    "label": "Particle number concentration",
+                    "unit": "cm-3"
+                  },
+                  {
+                    "key": "scattering",
+                    "label": "Light scattering coefficient",
+                    "unit": "Mm-1"
+                  },
+                  {
+                    "key": "absorption",
+                    "label": "Light absorption coefficient",
+                    "unit": "Mm-1"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/actris/facilities": {
+      "get": {
+        "summary": "ACTRIS facility metadata, by EBAS station code",
+        "description": "ACTRIS facility metadata, keyed by EBAS station code.\n\nAltitude, labelling status, `active` and the portal URI. Served live from an\nhourly cache rather than stored: the status and `active` are current-state\nfacts that change as stations move through certification, while\n`station_records` is keyed by year. Fails soft — an ACTRIS outage returns an\nempty map with `stale: true`, and costs the metadata, nothing else.",
+        "operationId": "get_actris_facilities_api_actris_facilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "fetched_at": "2026-09-16T08:00:11Z",
+                  "stale": false,
+                  "facilities": {
+                    "FI0050R": {
+                      "identifier": "FI0050R",
+                      "name": "Hyytiala",
+                      "country_code": "FI",
+                      "altitude_m": 181.0,
+                      "labelling_status": "labelled",
+                      "active": true,
+                      "uri": "https://data.actris.eu/facility/..."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nrt/stations": {
+      "get": {
+        "summary": "Stations with EBAS near-real-time data",
+        "description": "Which stations have EBAS near-real-time data for our three variables.\n\nA proxy, because ebas-nrt.nilu.no sends no CORS headers and the browser\ntherefore cannot ask it directly. Cached an hour upstream of this handler and\nfails soft: an NRT outage returns an empty list with `stale: true` rather than\nan error, so the dashboard renders normally with no badges.",
+        "operationId": "get_nrt_stations_api_nrt_stations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "fetched_at": "2026-09-16T08:00:11Z",
+                  "stale": false,
+                  "stations": [
+                    {
+                      "id": "FI0050R",
+                      "name": "Hyytiala",
+                      "variables": [
+                        "N",
+                        "scattering"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://actris-monitor-production.up.railway.app",
+      "description": "Production"
+    }
+  ]
+}

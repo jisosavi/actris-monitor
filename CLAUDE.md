@@ -32,10 +32,13 @@ backend/          FastAPI app
     formatting.py   response envelope, provenance, shared rendering
     limits.py       rate limit + concurrency cap (stands in for auth)
   scripts/dump_mcp_tools.py      regenerates docs/mcp-reference.md
+  scripts/dump_openapi.py        regenerates docs/public/openapi.json (Public routes only)
 frontend/src/
   composables/useStationData.ts  axios instance + all TanStack Query hooks
   stores/stations.ts             Pinia UI state (year, variable, filters)
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
+docs/.vitepress/                 VitePress documentation site (own package.json)
+docs/docs-site-plan.md           the docs site: decisions, build order, what is live
 docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
@@ -99,6 +102,15 @@ it is the reason the app is usable.
   unit, instrument, netCDF name and target wavelength.
 - Wavelength selection is nearest-neighbour with **no tolerance check**, so a file
   offering only a distant wavelength is silently accepted.
+
+**Every route carries exactly one tag** — `Public`, `Admin` or `Internal` — and
+`scripts/dump_openapi.py` publishes only the `Public` ones to
+`docs/public/openapi.json`, which the documentation site's Scalar page reads. A new
+route without a tag is published nowhere and appears in no reference; **tag it when
+you add it**. The tags are not `include_in_schema=False` on purpose: that flag
+would also hide the admin routes from this app's own `/docs`, and the operator
+running a fetch is exactly who needs them there. `--check` exits 1 when the
+committed document is stale, same as the MCP one.
 
 **The mutating endpoints require an admin token.** `POST /api/db/reset`,
 `/api/start-fetch` and `/api/backfill-networks` are guarded by `require_admin`,

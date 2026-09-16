@@ -70,11 +70,12 @@ export default defineConfig({
 
   head: [['link', { rel: 'icon', href: `${BASE}favicon.ico` }]],
 
-  vite: { plugins: [planDocPreamble()] },
+  vite: { plugins: [planDocPreamble()], build: { cssCodeSplit: true } },
 
   themeConfig: {
     nav: [
       { text: 'MCP reference', link: '/mcp-reference' },
+      { text: 'REST API', link: '/api' },
       { text: 'Design notes', link: '/mcp-server-plan' },
       { text: 'Dashboard ↗', link: APP },
     ],
@@ -83,6 +84,10 @@ export default defineConfig({
       {
         text: 'Model Context Protocol',
         items: [{ text: 'Tools, resources and prompts', link: '/mcp-reference' }],
+      },
+      {
+        text: 'REST API',
+        items: [{ text: 'Endpoint reference', link: '/api' }],
       },
       {
         text: 'Design notes',
