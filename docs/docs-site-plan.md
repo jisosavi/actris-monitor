@@ -1,8 +1,11 @@
 # Documentation site plan
 
 A published documentation site for this project, aimed at the people connecting an
-agent to `/mcp`. Investigated 2026-09-16. **Not implemented** — this document is
-the decision record and the build order.
+agent to `/mcp`. Investigated 2026-09-16.
+
+**Status:** phases 1 and 3b are built — `cd docs && npm run build` produces the
+site. Phase 0's host test is waiting on an upload. Phases 2, 4 and 5 are open.
+This document remains the decision record and the build order.
 
 The short version: **VitePress** for the site, **Scalar** for the API reference
 page inside it, hosted as static files next to the dashboard on isosavi.com. No
@@ -162,11 +165,15 @@ not a commitment to build what is listed as unbuilt.* Without it a reader plans
 around monthly resolution arriving. This is the one piece of publishing a working
 note that is not free.
 
-Verified, so it is not assumed: `mcp-server-plan.md` contains no `{{` and no raw
-tags, so it builds unmodified. The `<id>` in `actris-metadata-api-plan.md` — the
-only Vue-parsing hazard in the repository — sits in an excluded file and is
-therefore still off the critical path. Fix it anyway as insurance; it is one pair
-of backticks.
+Verified by building, not assumed: `mcp-server-plan.md` compiles unmodified.
+
+An earlier draft called the `<id>` in `actris-metadata-api-plan.md` a
+Vue-parsing hazard. It is not — it sits inside a code span
+(`` `https://data.actris.eu/facility/<id>` ``), which markdown-it renders as
+`<code>` before Vue ever sees it. The scan that flagged it matched angle
+brackets without checking for surrounding backticks. **There are no
+Vue-parsing hazards anywhere in this repository's markdown**, published or
+excluded, and nothing needs fixing before publishing any of it.
 
 Because the design note is on the site, the MCP getting-started page can state the
 two caveats briefly and link to it, rather than re-explaining them in full.
@@ -381,13 +388,26 @@ the part no tool does for you.
 
 Scope is decided and nothing is blocking.
 
-**The bare directory form is expected to work** — the server's operator says a
-request for the `/docs` directory is handled, which means the rewrite defers to
-`DirectoryIndex` rather than intercepting the folder. Confirm it on the first
-upload anyway, since phase 0 is uploading a folder regardless and the check is
-free. If it were ever to fail, the fallbacks are linking to `docs/index.html`
-explicitly or moving to the sibling path `/test/actris-monitor-docs/` — a line of
-config, not a redesign.
+**The bare directory form is expected to work.** Probed against a sibling app at
+`/test/ikimetsat/`, which the operator offered as the comparison:
+
+- `/test/ikimetsat/` serves its own `index.html` — **`DirectoryIndex` works on
+  this server.**
+- `/test/ikimetsat/zzz` returns a plain **404**, and so does `/test/zzz`.
+
+So the catch-all that serves the dashboard is **scoped to
+`/test/actris-monitor/`** — almost certainly an `.htaccess` in that directory —
+rather than being a server-wide rule. Everywhere else Apache behaves normally.
+
+That has one consequence worth writing down: an `.htaccess` applies to
+subdirectories, so docs nested at `/test/actris-monitor/docs/` **inherit the
+rewrite**, while a sibling at `/test/actris-monitor-docs/` would not. Every URL
+this site emits is a real `.html` file, so the inherited rewrite never fires and
+the nested path is fine. If it ever became awkward, a one-line
+`docs/.htaccess` containing `RewriteEngine Off` makes the nested directory
+behave exactly like a sibling.
+
+Confirm on the first upload regardless — the check is free.
 
 ### CORS on the try-it runner: not a problem after all
 
