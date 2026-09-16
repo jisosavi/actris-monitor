@@ -20,12 +20,12 @@ Wavelengths are the values the fetch targets (`backend/variables.py`); selection
 
 ## Screenshots
 
-![Map view with the Pallas station detail panel open, showing its annual mean, ACTRIS facility metadata and a link to near-real-time data](docs/Actris%20Monitor%20-%20Application%20UI.jpg)
+![Map view with the Pallas station detail panel open, showing its annual mean, ACTRIS facility metadata and a link to near-real-time data](.github/assets/dashboard-map-view.jpg)
 *Main map view — 2025 particle number concentration, with Pallas (Sammaltunturi) pinned. The panel runs from this project's own Level 2 annual mean and year-on-year change, through the ACTRIS facility registry (altitude, labelling status, a link to the station's portal page), to the EBAS near-real-time section with its Level 1.5 caveat.*
 
 *Pallas is worth reading closely, because it shows why the registry flag is displayed and never filtered on: it is a fully **labelled** ACTRIS National Facility, it is currently **streaming live data** — and the registry records it as not currently registered as operating. All three are true at once. Filtering the map by that flag would have hidden a station that is actively measuring.*
 
-![Data Setup panel for fetching and managing measurement data](docs/Actris%20Monitor%20-%20Data%20Setup%20View.jpg)
+![Data Setup panel for fetching and managing measurement data](.github/assets/data-setup-panel.jpg)
 *Data Setup panel — admin token, year range and variable selection, per-variable refresh, and network metadata backfill. Viewing the dashboard needs no token; only data management does.*
 
 ## Interface
@@ -196,6 +196,14 @@ Environment variables that matter in production (all documented in `backend/.env
 ## Live Demo
 
 [https://www.isosavi.com/test/actris-monitor/](https://www.isosavi.com/test/actris-monitor/)
+
+## Documentation
+
+[https://www.isosavi.com/test/actris-monitor/docs/](https://www.isosavi.com/test/actris-monitor/docs/)
+
+Connecting an MCP client, the generated tool reference, the REST API reference and
+the design notes — the same documents as in `docs/`, rendered and searchable. The
+markdown sources and an `llms.txt` index are served alongside them for agents.
 
 ## License
 

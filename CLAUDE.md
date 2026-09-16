@@ -37,12 +37,20 @@ frontend/src/
   composables/useStationData.ts  axios instance + all TanStack Query hooks
   stores/stations.ts             Pinia UI state (year, variable, filters)
   components/                    StationMap, RankingChart, StatsCards, AdminPanel
-docs/.vitepress/                 VitePress documentation site (own package.json)
+docs/README.md                   what lives in docs/ and which files are generated
+docs/.vitepress/                 VitePress site: config, theme, Scalar component
+docs/index.md                    site landing page
+docs/mcp-getting-started.md      site page: connecting an MCP client
+docs/api.md                      site page: the Scalar REST reference
+docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
+docs/public/openapi.json         generated public REST surface — do not hand-edit
+docs/public/examples/            a real captured MCP exchange, embedded and tested
 docs/docs-site-plan.md           the docs site: decisions, build order, what is live
 docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
-docs/mcp-reference.md            generated MCP surface reference — do not hand-edit
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 docs/actris-metadata-api-plan.md  plan for moving to the ACTRIS metadata API v3
+.github/workflows/ci.yml         tests, both --check gates, and the deployable build
+.github/assets/                  screenshots the README uses (not part of the site)
 ```
 
 ## Things that are easy to get wrong

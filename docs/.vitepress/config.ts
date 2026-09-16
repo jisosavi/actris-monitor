@@ -78,7 +78,14 @@ export default defineConfig({
 
   // Working notes for whoever edits the code. Public in the repository, not on the
   // site — see "One plan doc is published; three are not" in docs-site-plan.md.
-  srcExclude: ['docs-site-plan.md', 'nrt-integration-plan.md', 'actris-metadata-api-plan.md'],
+  // README.md is the directory guide for anyone opening docs/ in the repository.
+  // Without this line VitePress publishes it as /docs/README.html.
+  srcExclude: [
+    'README.md',
+    'docs-site-plan.md',
+    'nrt-integration-plan.md',
+    'actris-metadata-api-plan.md',
+  ],
 
   head: [['link', { rel: 'icon', href: `${BASE}favicon.ico` }]],
 
