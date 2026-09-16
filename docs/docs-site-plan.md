@@ -180,17 +180,33 @@ whereas a docs build coupled to the dashboard's CSS pipeline is a real one.
 
 ### Linking from the dashboard
 
-The "About this app ↗" button in `frontend/src/components/AdminPanel.vue`
-currently points at `REPOSITORY_URL`. Once the site exists, **repoint it there**
-rather than adding a button: the docs site becomes the better front door, and it
-can link onward to GitHub.
+The "About this app ↗" button in `frontend/src/components/AdminPanel.vue` is
+today an `<a>` straight to `REPOSITORY_URL`. It becomes a button that **opens a
+dialog offering two destinations**: the documentation site and the GitHub
+repository.
 
-This is not stylistic. The scoped style in that component carries a comment
-recording that two stacked buttons already overflow the sidebar on a 1000px
-window — enough to push *Data Setup* out of sight, which was a real bug someone
-fixed. A third button would regress it.
+A dialog rather than a second button, and this is not stylistic. The scoped style
+in that component carries a comment recording that two stacked buttons already
+overflow the sidebar on a 1000px window — enough to push *Data Setup* out of
+sight, a real bug someone fixed. The sidebar has no room for a third control, and
+a dialog adds none.
 
-The href depends on the deploy path settled in phase 0, so this change lands last.
+`components/ui/` currently holds `badge`, `button`, `card`, `select` and
+`separator` — **no dialog**. `reka-ui` is already a dependency, so the shadcn-vue
+dialog generates cleanly on top of it:
+
+```bash
+cd frontend && npx shadcn-vue@latest add dialog
+```
+
+That writes into `components/ui/dialog/`, which `CLAUDE.md` marks as generated —
+so it is added by the generator and left alone afterwards, like the other five.
+
+The dialog is two labelled links, each saying where it goes and why: the docs for
+using the data and the MCP endpoint, GitHub for the code and the issue tracker.
+No version string — it would be one more thing to forget to update.
+
+The docs href depends on the deploy path settled in phase 0, so this lands last.
 It is the only frontend change in the plan, and it needs
 `npm run type-check && npm run lint` before committing.
 
@@ -352,13 +368,27 @@ the part no tool does for you.
 
 ## Still open
 
-Everything about scope is decided. Two facts remain unknown, both answerable only
-by doing:
+Everything about scope is decided. **One** fact remains unknown:
 
-- **Does the bare directory form resolve?** Whether `/test/actris-monitor/docs/`
-  reaches `docs/index.html` via `DirectoryIndex`, or the catch-all intercepts it
-  first. Phase 0, one folder with one file. If it loses, the sibling path
-  `/test/actris-monitor-docs/` sidesteps it entirely.
-- **Is the try-it runner worth keeping?** It needs `ALLOWED_ORIGIN` to include the
-  docs origin. If that proves awkward, disable the runner — the reference is the
-  part that matters.
+- **Does the bare directory form resolve?** A browser asking for
+  `/test/actris-monitor/docs/` is asking for a folder, not a file, and Apache's
+  `DirectoryIndex` setting is what turns that into `docs/index.html`. The open
+  question is ordering: this host also has a catch-all that serves the dashboard
+  whenever the requested thing is not a real file, and a folder is not a file.
+  Whether the folder resolves first depends on a `!-d` condition we cannot see
+  from outside. Phase 0 answers it with one folder containing one file, requested
+  with and without the trailing slash. If it loses, link to `docs/index.html`
+  explicitly or move to the sibling path `/test/actris-monitor-docs/`. Either way
+  it costs a line of config, not a redesign.
+
+### CORS on the try-it runner: not a problem after all
+
+An earlier draft listed this as an unknown. It is not. An *origin* is scheme, host
+and port — the path plays no part. Hosting the docs under
+`www.isosavi.com/test/actris-monitor/docs/` puts them on **exactly the origin the
+dashboard already runs on**, so the try-it requests to the Railway backend are
+indistinguishable from the ones the dashboard makes all day, and `ALLOWED_ORIGIN`
+already covers them.
+
+This only returns if the docs ever move to a different host or a `docs.` subdomain
+— which is a further argument for the subdirectory.
