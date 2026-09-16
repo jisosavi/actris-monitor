@@ -87,7 +87,37 @@ export default defineConfig({
     'actris-metadata-api-plan.md',
   ],
 
-  head: [['link', { rel: 'icon', href: `${BASE}favicon.ico` }]],
+  head: [
+    ['link', { rel: 'icon', href: `${BASE}favicon.ico` }],
+    // The site-wide index of what a machine should read instead of scraping HTML.
+    ['link', { rel: 'alternate', type: 'text/plain', href: `${BASE}llms.txt`, title: 'llms.txt' }],
+  ],
+
+  /**
+   * Point each page at its machine-readable twin.
+   *
+   * The pages are for people; the JSON and the markdown are for everything else.
+   * An agent handed api.html should not have to scrape it — `openapi.json` carries
+   * the base URL, every endpoint, the parameters and the caveats, in a format it
+   * parses. `rel="alternate"` is how a document says that without a banner
+   * addressed to robots.
+   */
+  transformHead({ pageData }) {
+    const page = pageData.relativePath.replace(/\.md$/, '')
+    if (page === 'api') {
+      return [[
+        'link',
+        { rel: 'alternate', type: 'application/json', href: `${BASE}openapi.json`, title: 'OpenAPI 3.1 document' },
+      ]]
+    }
+    if (PUBLISHED.includes(page)) {
+      return [[
+        'link',
+        { rel: 'alternate', type: 'text/markdown', href: `${BASE}${page}.md`, title: 'Markdown source' },
+      ]]
+    }
+    return []
+  },
 
   vite: { plugins: [planDocPreamble()], build: { cssCodeSplit: true } },
 
@@ -124,7 +154,7 @@ export default defineConfig({
       '',
       '## Machine-readable',
       '',
-      `- [OpenAPI document](${SITE}openapi.json): the six public REST endpoints, OpenAPI 3.1.`,
+      `- [OpenAPI document](${SITE}openapi.json): **the REST API documentation**. Base URL, all six endpoints, parameters, response examples and the data caveats, OpenAPI 3.1. Read this rather than the rendered page at ${SITE}api.html, which is the same content drawn for people.`,
       `- [MCP endpoint](${MCP}): Streamable HTTP, unauthenticated, rate-limited.`,
       '',
       '## Source',
@@ -173,7 +203,10 @@ export default defineConfig({
 
     footer: {
       message: `Data from <a href="https://ebas.nilu.no">EBAS</a> / <a href="https://www.actris.eu">ACTRIS</a>. Measurements are contributed by station principal investigators — please cite them. MCP endpoint: <code>${MCP}</code>`,
-      copyright: `<a href="${REPO}">Source on GitHub</a>`,
+      copyright:
+        `<a href="${REPO}">Source on GitHub</a> · ` +
+        `Machine-readable: <a href="${BASE}llms.txt">llms.txt</a>, ` +
+        `<a href="${BASE}openapi.json">openapi.json</a>`,
     },
   },
 })

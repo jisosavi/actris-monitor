@@ -97,17 +97,41 @@ jobs:
       - name: Build the documentation
         working-directory: docs
         run: npm run build
-      - name: Check the REST page survives without JavaScript
+      # The pages are drawn for people; the JSON and the markdown are what a
+      # machine should read. That only works while the pages keep saying so — a
+      # character count would not notice the signposts going missing, and would
+      # need retuning every time the prose changes.
+      - name: Check the machine-readable formats are still advertised
         run: |
           python3 - <<'PY'
-          import re, sys
-          html = open('frontend/dist/docs/api.html').read()
-          text = re.sub(r'<[^>]+>', ' ', re.sub(r'<script.*?</script>', '', html, flags=re.S))
-          n = len(re.sub(r'\s+', ' ', text).strip())
-          print(f'{n} characters of server-rendered text')
-          # The Scalar embed renders nothing without JS. If this page ever drops
-          # back to chrome only, agents and crawlers get an empty page again.
-          sys.exit(0 if n > 1200 else 'api.html lost its pre-rendered content')
+          import sys
+          from pathlib import Path
+
+          missing = []
+
+          api = Path('frontend/dist/docs/api.html').read_text()
+          for needle, why in [
+              ('rel="alternate" type="application/json"', 'api.html no longer points at openapi.json'),
+              ('openapi.json', 'api.html has no visible link to the spec'),
+              ('actris-monitor-production.up.railway.app', 'api.html no longer states the base URL'),
+              ('<noscript', 'api.html has no no-JavaScript fallback'),
+          ]:
+              if needle not in api:
+                  missing.append(why)
+
+          for page in ('mcp-getting-started', 'mcp-reference', 'mcp-server-plan'):
+              html = Path(f'frontend/dist/docs/{page}.html').read_text()
+              if 'rel="alternate" type="text/markdown"' not in html:
+                  missing.append(f'{page}.html does not advertise its markdown twin')
+              if not Path(f'frontend/dist/docs/{page}.md').exists():
+                  missing.append(f'{page}.md was not shipped')
+
+          if not Path('frontend/dist/docs/llms.txt').exists():
+              missing.append('llms.txt was not generated')
+
+          for problem in missing:
+              print(f'  {problem}')
+          sys.exit(1 if missing else 0)
           PY
       - uses: actions/upload-artifact@v7
         with:
