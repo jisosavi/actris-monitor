@@ -39,20 +39,15 @@ PREAMBLE = f"""\
 
 {BANNER}
 
-The tools, resources and prompts served at `/mcp`. Every description below is the
-text the client and model actually receive, so this document and the agent's own
-instructions cannot drift apart — both come from `backend/mcp_server/`.
+Every tool, resource and prompt served at `/mcp`, with the exact text the client
+and model receive. Generated from `backend/mcp_server/`, so this page and the
+agent's own instructions cannot drift apart.
 
-Endpoint, connection instructions and the rate limits are in the README; the
-operational gotchas are in `CLAUDE.md`; the design and the roadmap for what is not
-built yet are in `docs/mcp-server-plan.md`.
-
-Regenerate with:
-
-```bash
-cd backend && python scripts/dump_mcp_tools.py
-```
+New here? [Connecting a client](mcp-getting-started.md) covers the endpoint, the
+rate limits and what to ask first. The reasoning behind the data — and what the
+annual means do not say — is in [the design notes](mcp-server-plan.md).
 """
+
 
 
 def type_of(schema: dict[str, Any]) -> str:
@@ -61,6 +56,12 @@ def type_of(schema: dict[str, Any]) -> str:
         # Just the value: it reads as a fixed value on its own, and appending
         # "(constant)" turns an array of one into `"annual"` (constant)[].
         return f"`{json.dumps(schema['const'])}`"
+    # An enum is the whole point of the field, and rendering it as `string` cost a
+    # careful reader the right conclusion: a reviewer read this page and reported
+    # that the tools take an undocumented bare string. The model was always given
+    # the enum — this document was not showing it.
+    if "enum" in schema:
+        return " | ".join(f"`{json.dumps(v)}`" for v in schema["enum"])
     if "$ref" in schema:
         name = schema["$ref"].rsplit("/", 1)[-1]
         return f"[`{name}`](#{name.lower()})"
@@ -135,7 +136,14 @@ def render_tool(tool: Any) -> list[str]:
         if ann.open_world_hint is False:
             hints.append("closed-world (answers from this database, not the web)")
 
-    lines = [f"### `{tool.name}`" + (f" — {tool.title}" if tool.title else ""), ""]
+    # The title goes on its own line rather than after an em dash in the heading:
+    # `### \`get_change\` — Change between periods` produces the anchor
+    # #get-change-—-change-between-periods, which is fragile to paste and ugly in
+    # a URL. An explicit {#slug} would fix the site and leak literal braces onto
+    # GitHub, which reads the same file.
+    lines = [f"### `{tool.name}`", ""]
+    if tool.title:
+        lines += [f"**{tool.title}**", ""]
     if hints:
         lines += [f"*{', '.join(hints)}*", ""]
     if tool.description:
@@ -193,7 +201,9 @@ async def build() -> str:
             "",
         ]
         for r in sorted(resources, key=lambda r: str(r.uri)):
-            lines += [f"### `{r.uri}`" + (f" — {r.title}" if r.title else ""), ""]
+            lines += [f"### `{r.uri}`", ""]
+            if r.title:
+                lines += [f"**{r.title}**", ""]
             lines += [f"*{r.mime_type}*", ""] if r.mime_type else []
             if r.description:
                 lines += [r.description, ""]
@@ -208,7 +218,9 @@ async def build() -> str:
             "",
         ]
         for p in sorted(prompts, key=lambda p: p.name):
-            lines += [f"### `{p.name}`" + (f" — {p.title}" if p.title else ""), ""]
+            lines += [f"### `{p.name}`", ""]
+            if p.title:
+                lines += [f"**{p.title}**", ""]
             if p.description:
                 lines += [p.description, ""]
             if p.arguments:

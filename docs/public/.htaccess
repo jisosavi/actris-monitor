@@ -15,3 +15,10 @@
 RewriteEngine Off
 
 DirectoryIndex index.html
+
+# The markdown sources ship next to the rendered pages for agents (see buildEnd in
+# .vitepress/config.ts). Apache has no type for .md by default, which makes a
+# browser download the file instead of showing it and gives a fetching client
+# application/octet-stream.
+AddType text/markdown .md
+AddType application/json .json

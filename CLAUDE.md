@@ -214,15 +214,22 @@ module-global connection without closing the old one *and* flips every
 `status='running'` fetch job to `'failed'`. The tools rely on the lifespan having
 done it once.
 
-**A new tool, resource or prompt is invisible to already-connected clients.** The
-server advertises `listChanged: true` on all three surfaces, but that promises a
-*push*, and the stateless 2026-07-28 transport has no server-to-client channel to
-push down — there is no session to notify. A client discovers the surface once, via
-`server/discover`, when its connection is established: adding the connector, app
-launch, toggling it off and on, or reconnecting after a network drop. Opening a new
-conversation re-probes nothing. So after deploying a new tool, **reconnect the
-connector** — otherwise you will be looking for something the client has no way to
-know exists.
+**A new tool, resource or prompt is invisible to already-connected clients.** An
+earlier version of this note claimed the stateless transport had no server-to-client
+channel at all. That was wrong: 2026-07-28 replaced the HTTP GET endpoint with
+`subscriptions/listen`, a long-lived POST-response stream that clients opt into per
+notification type (`toolsListChanged` and friends), and the SDK implements it. The
+reason is simpler and unchanged in effect:
+
+- **We never push**, because our tool list cannot change within a process lifetime.
+  It changes by redeploying, which drops every stream anyway.
+- **A client may not be listening.** `subscriptions/listen` is opt-in, and a client
+  that never opens the stream learns nothing.
+- **A client may be holding a cached list.** List results now carry `ttlMs` and
+  `cacheScope`, and a client may reuse `tools/list` until the TTL expires.
+
+So after deploying a new tool, **reconnect the connector**. Opening a new
+conversation re-probes nothing.
 
 Two design rules worth keeping: `mcp_server/tools.py` imports `database` and
 `variables` only — never FastAPI, never `main` — which is what would make a

@@ -1,4 +1,4 @@
-# MCP Server — state and roadmap
+# MCP server plan
 
 ACTRIS Monitor exposes its data to AI agents over the Model Context Protocol at
 `/mcp`, on the same Railway container and the same SQLite file as the dashboard.
@@ -78,9 +78,10 @@ default, so `MCP_ALLOWED_HOSTS` is required in deployment or everything answers
 one self-contained POST.
 
 **A new tool is invisible to already-connected clients.** The surface is discovered
-once per connection via `server/discover`, and `listChanged` promises a push the
-stateless transport cannot deliver. Releases are therefore batched, and after one,
-clients must reconnect.
+once per connection via `server/discover`. The protocol does provide a push channel
+— `subscriptions/listen` — but this server never uses it: the tool list cannot
+change while the process runs, and it changes by redeploying, which drops any open
+stream. Releases are therefore batched, and after one, clients must reconnect.
 
 ## The data it serves
 
@@ -91,8 +92,11 @@ clients must reconnect.
 - **Fully pre-populated**: 81 (year, variable) pairs, 144 stations. No agent request
   can trigger a fetch, and nothing in the MCP path reaches NILU.
 - **The current year is normally empty.** Level 2 publication lags a year or two:
-  2026 holds zero stations, 2025 holds 12–16, 2023 holds 22–33. No tool resolves
-  "latest" silently; where one picks a range it names the range it picked.
+  2026 holds zero stations, 2025 holds 15–21, 2024 holds 22–28 and 2023 holds
+  22–33 — the range being across the three variables. (Counted from the live API on
+  2026-09-16; an earlier version of this line said 2025 held 12–16, which stopped
+  being true when the data was re-fetched.) No tool resolves "latest" silently;
+  where one picks a range it names the range it picked.
 
 ## Conventions every response follows
 
@@ -141,11 +145,12 @@ These matter more than the tool list.
 
    `provenance.mean_method` now says all of this, in every payload.
 
-**Both are permanent.** A rigorous replacement was specified and then set aside as
-more than this dashboard needs — see *The aggregation question* below. Limitation 1
-would still be fixed by the monthly re-fetch, which computes coverage properly as a
-side effect. Limitation 2 stays, so the disclosures above are not a stopgap: they
-are how these numbers are described, indefinitely.
+**Limitation 2 is permanent; limitation 1 is not.** A rigorous replacement for the
+aggregation was specified and then set aside as more than this dashboard needs — see
+*The aggregation question* below — so the mixed-measurand disclosure is not a
+stopgap, it is how these numbers are described, indefinitely. The coverage flag is
+different: the monthly re-fetch would compute coverage properly as a side effect,
+and limitation 1 goes away with it.
 
 ## Tests
 
@@ -250,8 +255,8 @@ how it is averaged. Asked the narrow question, the answer was "you may drop the
 humidified files", and `_parse_catalog` now does.
 
 - Matched as a **substring** of the matrix field, because the catalogue spells it
-  three ways: `pm10_humidified` (10 files), `pm1_humidified` (9),
-  `aerosol_humidified` (5). Matching one exactly would have kept 19 of the 24.
+  three ways — the counts are under *Omit humidified data* above. Matching one
+  spelling exactly would have kept 19 of the 24.
 - **Scattering only** — all 24 are nephelometer files. `N` and `absorption` are
   untouched.
 **It changed no values.** The forced re-fetch of all 27 scattering years was run on

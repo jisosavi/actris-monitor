@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitepress'
 import type { Plugin } from 'vite'
+import { copyFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // The deploy path. Overridable the way the dashboard's VITE_BASE_PATH is, so a
 // preview can be built for a different location without editing this file.
@@ -13,6 +15,10 @@ const OUT_DIR = process.env.DOCS_OUT_DIR ?? '../frontend/dist/docs'
 const REPO = 'https://github.com/jisosavi/actris-monitor'
 const APP = 'https://www.isosavi.com/test/actris-monitor/'
 const MCP = 'https://actris-monitor-production.up.railway.app/mcp'
+const SITE = `https://www.isosavi.com${BASE}`
+
+// Pages whose markdown source ships next to the rendered page, for agents.
+const PUBLISHED = ['mcp-getting-started', 'mcp-reference', 'mcp-server-plan']
 
 /**
  * Prepend a standing note to the one working-note document we publish.
@@ -78,9 +84,57 @@ export default defineConfig({
 
   vite: { plugins: [planDocPreamble()], build: { cssCodeSplit: true } },
 
+  /**
+   * Ship the markdown sources alongside the rendered pages, and an llms.txt
+   * index pointing at them.
+   *
+   * The readers this site is for are largely agents, and an agent fetching
+   * mcp-reference.html gets VitePress's app shell wrapped around the content it
+   * wanted. The same file at .md is the content and nothing else. Generated here
+   * rather than committed to public/ so the index cannot list a page that did not
+   * ship, or miss one that did.
+   */
+  buildEnd(config) {
+    const out = config.outDir
+    for (const name of PUBLISHED) copyFileSync(join(config.srcDir, `${name}.md`), join(out, `${name}.md`))
+
+    const lines = [
+      '# ACTRIS Monitor',
+      '',
+      '> Annual-mean in-situ aerosol measurements from the EBAS/ACTRIS European',
+      '> research network — three variables, Level 2 quality-assured, 2000 onwards.',
+      '> Served over the Model Context Protocol and a read-only REST API. Data is',
+      '> annual: one mean per station, variable and calendar year. Monthly and daily',
+      '> figures do not exist. Annual means are unweighted across a station\'s files',
+      '> and may mix size cuts, and no field states what fraction of a year was',
+      '> observed.',
+      '',
+      '## Documentation',
+      '',
+      `- [Connecting a client](${SITE}mcp-getting-started.md): the MCP endpoint, how to add it, limits, and what to ask first.`,
+      `- [MCP reference](${SITE}mcp-reference.md): every tool, resource and prompt, with the exact text the model receives. Generated from the server.`,
+      `- [MCP server plan](${SITE}mcp-server-plan.md): design notes — why the annual mean is computed the way it is, and what it does not say.`,
+      '',
+      '## Machine-readable',
+      '',
+      `- [OpenAPI document](${SITE}openapi.json): the six public REST endpoints, OpenAPI 3.1.`,
+      `- [MCP endpoint](${MCP}): Streamable HTTP, unauthenticated, rate-limited.`,
+      '',
+      '## Source',
+      '',
+      `- [Repository](${REPO})`,
+      `- [Dashboard](${APP})`,
+      '',
+    ]
+    writeFileSync(join(out, 'llms.txt'), lines.join('\n'))
+  },
+
   themeConfig: {
+    // One name per page, used identically in the nav, the sidebar and the page's
+    // own title. Four different names for four pages is how a reader ends up
+    // unsure whether "Endpoint reference" and "REST API" are the same thing.
     nav: [
-      { text: 'Connect an agent', link: '/mcp-getting-started' },
+      { text: 'Connecting a client', link: '/mcp-getting-started' },
       { text: 'MCP reference', link: '/mcp-reference' },
       { text: 'REST API', link: '/api' },
       { text: 'Design notes', link: '/mcp-server-plan' },
@@ -92,13 +146,10 @@ export default defineConfig({
         text: 'Model Context Protocol',
         items: [
           { text: 'Connecting a client', link: '/mcp-getting-started' },
-          { text: 'Tools, resources and prompts', link: '/mcp-reference' },
+          { text: 'MCP reference', link: '/mcp-reference' },
         ],
       },
-      {
-        text: 'REST API',
-        items: [{ text: 'Endpoint reference', link: '/api' }],
-      },
+      { text: 'REST API', link: '/api' },
       {
         text: 'Design notes',
         items: [{ text: 'MCP server plan', link: '/mcp-server-plan' }],

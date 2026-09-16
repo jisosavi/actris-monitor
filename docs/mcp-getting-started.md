@@ -23,10 +23,12 @@ claude mcp add --transport http actris-monitor \
 server. There is no token to configure.
 
 ::: tip A new tool is invisible until you reconnect
-The server advertises `listChanged`, but the stateless transport has no channel to
-push on — a client discovers the surface once, when its connection is established.
-If something documented here is missing from your client, toggle the connector off
-and on.
+The protocol does have a push channel — `subscriptions/listen`, which a client opts
+into per notification type. But this server never uses it: its tool list cannot
+change while the process runs, and it changes by redeploying, which drops any open
+stream. A client may also be reusing a cached `tools/list` until its `ttlMs`
+expires. So if something documented here is missing from your client, toggle the
+connector off and on.
 :::
 
 ## Start with `get_coverage`
