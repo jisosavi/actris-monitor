@@ -19,8 +19,69 @@ claude mcp add --transport http actris-monitor \
   https://actris-monitor-production.up.railway.app/mcp
 ```
 
-**Claude Desktop and other clients** — add it as an HTTP (Streamable HTTP) MCP
-server. There is no token to configure.
+**Any other client** — add it as an HTTP (Streamable HTTP) server. Most take some
+form of this, which is also what `.mcp.json` in the repository contains:
+
+```json
+{
+  "mcpServers": {
+    "actris-monitor": {
+      "type": "http",
+      "url": "https://actris-monitor-production.up.railway.app/mcp"
+    }
+  }
+}
+```
+
+There is no token, no header and no session to configure.
+
+## Checking it by hand
+
+A liveness check needs nothing but a POST. This lists the tools:
+
+```bash
+curl -sX POST https://actris-monitor-production.up.railway.app/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The response is an SSE frame — `event: message` followed by a `data:` line holding
+the JSON-RPC result.
+
+::: warning The protocol era is chosen by a header, not by the body
+That request is served on the **legacy** path, because it carries no
+`MCP-Protocol-Version` header. On that path the 2026-07-28 methods do not exist:
+`server/discover` returns `-32601 Method not found`, and capabilities report
+`listChanged: false`. Nothing is broken — the request simply asked for an older
+protocol without saying so.
+
+Putting the version in `params._meta` does **not** help. The transport routes on the
+header alone and never inspects the body.
+:::
+
+A 2026-07-28 request needs three things together — the header, an `Mcp-Method` that
+matches the body, and the `_meta` envelope:
+
+```bash
+curl -sX POST https://actris-monitor-production.up.railway.app/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"server/discover",
+       "params":{"_meta":{
+         "io.modelcontextprotocol/protocolVersion":"2026-07-28",
+         "io.modelcontextprotocol/clientCapabilities":{}}}}'
+```
+
+That returns the server's capabilities and the instructions the model receives. Omit
+any one of the three and you get a specific complaint: `-32601` for the missing
+header, `-32020` for a mismatched `Mcp-Method`, `-32602` for a missing `_meta`
+envelope.
+
+A real client handles all of this. This is for proving the endpoint is up, and for
+working out which era your client actually negotiated.
 
 ::: tip A new tool is invisible until you reconnect
 The protocol does have a push channel — `subscriptions/listen`, which a client opts
