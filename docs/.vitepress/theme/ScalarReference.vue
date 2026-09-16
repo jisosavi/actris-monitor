@@ -12,7 +12,7 @@
  * copy containing only the Public routes, and a docs build should not depend on
  * a deploy being reachable.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { ApiReference } from '@scalar/api-reference'
 import '@scalar/api-reference/style.css'
 import { useData, withBase } from 'vitepress'
@@ -33,34 +33,26 @@ const configuration = computed(() => ({
   hideClientButton: false,
 }))
 
-/**
- * Keep VitePress's router out of Scalar's internal navigation.
- *
- * VitePress listens for anchor clicks on `window` and handles same-page hash
- * links itself, resolving the target and scrolling to it. Scalar's endpoint
- * links use hashes like `#GET/api/network-stats/{year}/{variable}` — which is
- * not a valid CSS selector, so VitePress's handler throws on the braces and the
- * click dies there. The hash and the sidebar highlight update, the content pane
- * never moves. Searching still worked, because that path never goes through a
- * link click, which is what made it look like a rendering bug rather than a
- * routing one.
- *
- * Listening on the bubble phase, not capture: Scalar's own handlers sit on the
- * link and must run first. This only stops the event before it reaches window.
- */
-const host = ref<HTMLElement | null>(null)
-
-function keepHashLinksLocal(event: MouseEvent) {
-  const link = (event.target as HTMLElement | null)?.closest?.('a')
-  if (link?.getAttribute('href')?.startsWith('#')) event.stopPropagation()
-}
-
-onMounted(() => host.value?.addEventListener('click', keepHashLinksLocal))
-onBeforeUnmount(() => host.value?.removeEventListener('click', keepHashLinksLocal))
 </script>
 
+<!--
+  `vp-raw` is not decoration — it is VitePress's own opt-out, and this page does
+  not work without it.
+
+  VitePress installs its click handler on `window` with `{ capture: true }` and
+  calls `preventDefault()` on any same-origin link, then resolves the hash
+  itself. Scalar's endpoint links are hashes like
+  `#GET/api/stations/{year}/{variable}`, which is not a valid selector, so the
+  click was cancelled and nothing scrolled — the URL and the sidebar highlight
+  updated because those happen first. Search kept working because it never goes
+  through a link click.
+
+  `router.js` skips any link inside `.vp-raw` before it reaches that code, which
+  hands the click back to Scalar. Stopping propagation in the container cannot
+  achieve this: capture on `window` runs before any listener inside it.
+-->
 <template>
-  <div ref="host" class="scalar-host">
+  <div class="scalar-host vp-raw">
     <ApiReference :configuration="configuration" />
   </div>
 </template>
