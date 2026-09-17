@@ -35,17 +35,42 @@ const unit = computed(() => VARIABLES[selectedVariable.value].unit)
  * reversed array and has to be mapped back. Getting that wrong opens the wrong
  * station *plausibly*, which is the kind of mistake that survives a review.
  */
-function onChartClick(params: { componentType?: string; dataIndex?: number; value?: unknown }) {
-  const stations = sorted.value
+interface ChartClickParams {
+  componentType?: string
+  targetType?: string
+  dataIndex?: number
+  value?: unknown
+}
 
-  if (params.componentType === 'yAxis') {
-    const station = stations.find((s) => labelFor(s) === params.value)
-    if (station) store.selectedStationId = station.id
+/** The chart is drawn bottom-to-top, so an index counts from the reversed list. */
+function stationAtReversedIndex(index: number): Station | undefined {
+  const stations = sorted.value
+  return stations[stations.length - 1 - index]
+}
+
+function onChartClick(params: ChartClickParams) {
+  // An axis-label click reports itself differently between ECharts versions —
+  // componentType 'yAxis' in some, targetType 'axisLabel' in others. Betting on
+  // one of them is what made the station names unclickable while the bars worked.
+  const fromAxis =
+    params.targetType === 'axisLabel' || (params.componentType?.endsWith('Axis') ?? false)
+
+  if (fromAxis) {
+    const byLabel = sorted.value.find((s) => labelFor(s) === params.value)
+    if (byLabel) {
+      store.selectedStationId = byLabel.id
+      return
+    }
+    // Some versions give an index instead of the label text.
+    if (typeof params.dataIndex === 'number') {
+      const byIndex = stationAtReversedIndex(params.dataIndex)
+      if (byIndex) store.selectedStationId = byIndex.id
+    }
     return
   }
 
-  if (params.componentType === 'series' && typeof params.dataIndex === 'number') {
-    const station = stations[stations.length - 1 - params.dataIndex]
+  if (typeof params.dataIndex === 'number') {
+    const station = stationAtReversedIndex(params.dataIndex)
     if (station) store.selectedStationId = station.id
   }
 }
