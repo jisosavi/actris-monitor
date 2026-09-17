@@ -57,12 +57,14 @@ are served from this service's own database; no request here reaches NILU.
 **Data is annual.** One mean per station, variable and calendar year. Monthly or
 daily figures do not exist and cannot be derived from these endpoints.
 
-**Two caveats the numbers do not carry.** A station-year's mean is unweighted
-across that station's files and may mix size cuts, so a step between years can
-come from a file appearing rather than from the atmosphere. And no field states
-what fraction of a year was actually observed — `data_coverage` is a has-data
-flag despite its name. Both are explained in the
+**A caveat the numbers do not carry.** A station-year's mean is unweighted across
+that station's files and may mix size cuts, so a step between years can come from a
+file appearing rather than from the atmosphere. Explained in the
 [design notes](https://www.isosavi.com/test/actris-monitor/docs/mcp-server-plan.html).
+
+**One they do carry:** `observed_fraction` is the share of the year's hours holding
+a usable value, 0-1. Read it before comparing two means. `null` means it could not
+be determined, which is not the same as `0.0`.
 
 **Please cite the data.** Measurements are contributed by station principal
 investigators; acknowledge them and EBAS/ACTRIS in any published use.

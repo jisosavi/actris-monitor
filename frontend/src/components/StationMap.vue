@@ -307,8 +307,11 @@ onUnmounted(() => {
         <div v-if="networkFilter.length > 0 && !hoveredStation.networks" class="tooltip-unknown-net">
           Network affiliation unknown
         </div>
-        <div v-if="hoveredStation.mean !== null" class="tooltip-coverage">
-          Coverage {{ (hoveredStation.data_coverage * 100).toFixed(0) }}%
+        <div
+          v-if="hoveredStation.mean !== null && hoveredStation.observed_fraction !== null"
+          class="tooltip-coverage"
+        >
+          {{ (hoveredStation.observed_fraction * 100).toFixed(0) }}% of the year observed
         </div>
         <div v-if="hoveredHasNrt" class="tooltip-live">
           <span class="tooltip-live-dot" />LIVE data available

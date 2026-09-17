@@ -358,6 +358,8 @@ numbers is how much of the network was silent that year.
 - **`country`** — `string`, **required**
 - **`networks`** — `string`[], **required**
 - **`mean`** — `number`, **required**
+- **`observed_fraction`** — `number` | `null`, optional
+  <br>Share of the period's hours holding a usable value, 0-1. Null where it could not be determined — not the same as 0.0. Read it before comparing means: 0.2 and 0.95 are not the same kind of number.
 
 ### `get_series`
 
@@ -422,6 +424,8 @@ not the current year — Level 2 publication lags by a year or two.
 - **`period_start`** — `string`, **required**
 - **`period_end`** — `string`, **required**
 - **`resolution`** — `"annual"`, optional
+- **`observed_fraction`** — `number` | `null`, optional
+  <br>Share of the period's hours holding a usable value, 0-1. Null where it could not be determined — not the same as 0.0. Read it before comparing means: 0.2 and 0.95 are not the same kind of number.
 - **`mean`** — `number` | `null`, **required**
   <br>Null means the period was requested and no usable value exists — not that it was omitted.
 
@@ -476,7 +480,7 @@ Attached to every tool result. Paraphrase-resistant only if it travels with the 
 - **`mean_method`** — `string`, optional
   <br>*Default:* Annual mean of hourly values > 0. Where a station has several files for a year — usually it does — their per-file annual means are averaged unweighted, so a file covering one month counts as much as one covering twelve. Those files may also differ in size cut (PM1, PM10, or none): different measurands, not repeat measurements of one. Humidified measurements are excluded. So treat cross-station comparisons as indicative, and note that a step between two years can come from a change in which files exist rather than from the atmosphere.
 - **`coverage_basis`** — `string`, optional
-  <br>*Default:* Presence only. The pipeline records whether any valid value was found for a station-year, not what fraction of the period was observed. A station with two months of data is indistinguishable here from one with twelve.
+  <br>*Default:* `observed_fraction` is the share of the period's hours holding at least one usable value, unioned across the station's files rather than summed — files overlap in time, so counting them separately would exceed the period. It measures how much of the period was observed, not how consistently: a station at 0.95 and one at 0.30 both report a single annual mean, and the second one's is worth much less. Null means the fraction could not be determined, which is not the same as 0.0; a station-year fetched before this was computed reads as null until it is re-fetched.
 - **`citation`** — `string`, optional
   <br>*Default:* EBAS database, Norwegian Institute for Air Research (NILU). Data are provided by ACTRIS and the individual station principal investigators; cite the data owners and acknowledge EBAS/ACTRIS in any published use.
 

@@ -8,7 +8,13 @@ export interface Station {
   unit: string
   delta_pct: number | null
   prev_mean: number | null
-  data_coverage: number
+  /**
+   * Share of the year's hours holding a usable value, 0-1. Null where it could
+   * not be determined — which is not the same as 0, and must not be rendered as
+   * "0%". Station-years fetched before this was computed are null until a
+   * forced re-fetch.
+   */
+  observed_fraction: number | null
   networks: string
 }
 

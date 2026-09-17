@@ -34,9 +34,9 @@ features:
       source, so they cannot drift apart.
   - title: Caveats stated, not buried
     details: >-
-      Annual only — no monthly or daily figures exist. Means are unweighted
-      across a station's files within a year, and no figure says what fraction of
-      a period was observed. Both are in every response.
+      Annual only — no monthly or daily figures exist, and means are unweighted
+      across a station's files within a year. Every row carries an
+      `observed_fraction` saying how much of the period was actually measured.
     link: /mcp-server-plan
     linkText: Why the means work that way
 ---
