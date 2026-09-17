@@ -129,6 +129,12 @@ jobs:
           if not Path('frontend/dist/docs/llms.txt').exists():
               missing.append('llms.txt was not generated')
 
+          # Checked here as well as relied on at upload: this catches the build
+          # losing it, include-hidden-files catches the upload losing it. They are
+          # different failures and only one of them is visible in the output tree.
+          if not Path('frontend/dist/docs/.htaccess').exists():
+              missing.append('docs/.htaccess was not shipped — /docs/ will serve the dashboard')
+
           for problem in missing:
               print(f'  {problem}')
           sys.exit(1 if missing else 0)
@@ -137,4 +143,10 @@ jobs:
         with:
           name: site-${{ github.sha }}
           path: frontend/dist
+          # Without this the action silently drops every dotfile, and the one it
+          # drops is docs/.htaccess — which turns off the dashboard's catch-all
+          # rewrite inside the docs directory. An artifact missing it is not a
+          # deployable site: /docs/ would serve the map instead of the docs, and a
+          # missing page would too, which is the bug that file exists to fix.
+          include-hidden-files: true
           retention-days: 30
