@@ -100,7 +100,9 @@ function coord(value: number, positive: string, negative: string) {
         class="detail-coverage"
         title="Share of the year's hours with a usable measurement, across this station's files"
       >
-        <template v-if="station.observed_fraction !== null">
+        <!-- typeof, not !== null: against a backend that predates this field the
+             value is undefined, which passes a null check and renders NaN%. -->
+        <template v-if="typeof station.observed_fraction === 'number'">
           Data coverage: <strong>{{ (station.observed_fraction * 100).toFixed(0) }}%</strong>
           of the year measured
         </template>

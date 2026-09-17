@@ -308,7 +308,7 @@ onUnmounted(() => {
           Network affiliation unknown
         </div>
         <div
-          v-if="hoveredStation.mean !== null && hoveredStation.observed_fraction !== null"
+          v-if="hoveredStation.mean !== null && typeof hoveredStation.observed_fraction === 'number'"
           class="tooltip-coverage"
         >
           {{ (hoveredStation.observed_fraction * 100).toFixed(0) }}% of the year observed
