@@ -246,7 +246,14 @@ const option = computed(() => {
 <template>
   <div class="ranking-panel">
     <div class="panel-header">
-      <span class="panel-title">Station Ranking</span>
+      <div class="panel-heading">
+        <span class="panel-title">Station Ranking</span>
+        <!-- The bars and the names both open the panel, and neither looks
+             interactive. Same job as the map's "Click the station for details". -->
+        <span v-if="sorted.length" class="panel-hint">
+          Click a bar or a station name for details
+        </span>
+      </div>
       <div class="toggle-group">
         <button
           :class="['tog', rankingMode === 'concentration' && 'tog--on']"
@@ -293,6 +300,27 @@ const option = computed(() => {
   padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 16px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.panel-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The toggles matter more than the hint on a narrow window. */
+@media (max-width: 900px) {
+  .panel-hint { display: none; }
 }
 
 .panel-title {
