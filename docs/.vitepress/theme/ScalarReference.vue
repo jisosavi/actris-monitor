@@ -58,13 +58,20 @@ const configuration = computed(() => ({
 </template>
 
 <style>
-/* Scalar ships a full-height app shell; inside a VitePress page it needs to be
-   told where the page starts. 64px is the VitePress navbar. */
+/*
+ * Scalar ships a full-height app shell, so it wants a floor to fill — but not a
+ * ceiling.
+ *
+ * This was `height: calc(100vh - nav)` with `overflow: hidden`, which was right
+ * while the embed sat directly under the navbar and exactly filled the viewport.
+ * Adding the intro above it pushed the box down without shrinking it, so its
+ * bottom fell past the viewport and `overflow: hidden` clipped the remainder with
+ * no scrollbar: the page showed its top and refused to move.
+ *
+ * min-height keeps the shell filling the screen on a short document and lets it
+ * grow on a long one, with the page scrolling as one.
+ */
 .scalar-host {
-  height: calc(100vh - var(--vp-nav-height));
-  overflow: hidden;
-}
-.scalar-host .scalar-api-reference {
-  height: 100%;
+  min-height: calc(100vh - var(--vp-nav-height));
 }
 </style>
