@@ -24,6 +24,37 @@ const filteredStations = useFilteredStations()
 
 const unit = computed(() => VARIABLES[selectedVariable.value].unit)
 
+/**
+ * Open the station detail panel from the chart.
+ *
+ * `StationDetail` takes no props — it reads `selectedStationId` from the store —
+ * so setting that is the whole of it, and the panel arrives with its ACTRIS
+ * metadata and near-real-time status because those are queries keyed by the id.
+ *
+ * The chart is rendered bottom-to-top, so a bar's `dataIndex` counts from the
+ * reversed array and has to be mapped back. Getting that wrong opens the wrong
+ * station *plausibly*, which is the kind of mistake that survives a review.
+ */
+function onChartClick(params: { componentType?: string; dataIndex?: number; value?: unknown }) {
+  const stations = sorted.value
+
+  if (params.componentType === 'yAxis') {
+    const station = stations.find((s) => labelFor(s) === params.value)
+    if (station) store.selectedStationId = station.id
+    return
+  }
+
+  if (params.componentType === 'series' && typeof params.dataIndex === 'number') {
+    const station = stations[stations.length - 1 - params.dataIndex]
+    if (station) store.selectedStationId = station.id
+  }
+}
+
+/** The y-axis label for a station. Shared so a click can be mapped back to one. */
+function labelFor(s: Station): string {
+  return s.name && s.name !== s.id ? `${s.name} / ${s.id}` : s.id
+}
+
 const sorted = computed<Station[]>(() => {
   const data = filteredStations.value.filter((s) => s.mean !== null)
   if (rankingMode.value === 'delta') {
@@ -45,9 +76,7 @@ function measureMaxLabelWidth(labels: string[], fontSize = 11): number {
 
 const option = computed(() => {
   const stations = sorted.value
-  const names = stations.map((s) =>
-    s.name && s.name !== s.id ? `${s.name} / ${s.id}` : s.id,
-  )
+  const names = stations.map(labelFor)
   const labelWidth = measureMaxLabelWidth(names)
   const values =
     rankingMode.value === 'concentration'
@@ -160,7 +189,9 @@ const option = computed(() => {
       data: [...names].reverse(),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { color: '#94a3b8', fontSize: 11 },
+      // triggerEvent makes the station names clickable, not just the bars — the
+      // name is what a reader points at when they mean "tell me about this one".
+      axisLabel: { color: '#94a3b8', fontSize: 11, triggerEvent: true },
     },
     series: [
       {
@@ -215,6 +246,7 @@ const option = computed(() => {
       class="chart"
       :option="option"
       :autoresize="true"
+      @click="onChartClick"
     />
   </div>
 </template>

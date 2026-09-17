@@ -15,6 +15,8 @@ independently, which is a good sign the caveat was visible to readers.
 | How to expose real coverage | **Repurpose `data_coverage`, and add it to the MCP payloads** | The column exists and the name finally becomes true. Agents are the readers most likely to over-trust an annual mean |
 | A file whose resolution is not hourly | **Omit it from the union, and log it** | A missing percentage is honest; a wrong one is worse than none |
 | The full re-fetch | **Decide later** | Build and verify the computation first; the re-fetch is an operational call once its output can be seen |
+| Storing "could not determine" | **Make `data_coverage` nullable** | `NOT NULL DEFAULT 0.0` cannot express *unknown*, and `0.0` means "observed nothing", a different claim. SQLite cannot relax the constraint, so `init_db` rebuilds the table — cheap, since the re-fetch rewrites every row anyway |
+| The field name | **`observed_fraction`, 0–1, in both REST and MCP** | `StationMatch.coverage` already exists and means *which years hold data*. A second field called coverage, meaning something else, would sit next to it. One name through both doors |
 
 ## 1. The registry note — done
 
@@ -142,10 +144,22 @@ and clients see it only after reconnecting. The REST API does expose it, and its
 meaning changes silently for anyone consuming it; today that is only our own
 frontend.
 
+### Naming and the nullable column
+
+Two wrinkles this plan missed on the first pass, both settled above.
+
+`data_coverage` is `NOT NULL DEFAULT 0.0`, so there is nowhere to put *unknown*.
+The rename to `observed_fraction` and the nullable rebuild happen together, in one
+`init_db` migration: create the new table, copy, drop, rename. `mean REAL` is
+already nullable, so the pattern exists.
+
+And `StationMatch.coverage` in the MCP surface already means *which years hold data
+for this station*. The new field is deliberately not called coverage.
+
 ### Frontend
 
-`data_coverage` already flows through `aggregation.py` → `/api/stations` → the
-`Station` type. The panel renders it. Show it as a percentage with a plain label —
+The value flows through `aggregation.py` → `/api/stations` → the `Station` type as
+it does today, under the new name. The panel renders it. Show it as a percentage with a plain label —
 *"Data coverage: 87% of 2023"* — and render the no-data case as "not available"
 rather than 0%.
 
