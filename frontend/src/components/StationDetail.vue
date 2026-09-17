@@ -95,6 +95,21 @@ function coord(value: number, positive: string, negative: string) {
           </div>
         </div>
       </div>
+      <div
+        v-if="station.mean !== null"
+        class="detail-coverage"
+        title="Share of the year's hours with a usable measurement, across this station's files"
+      >
+        <!-- typeof, not !== null: against a backend that predates this field the
+             value is undefined, which passes a null check and renders NaN%. -->
+        <template v-if="typeof station.observed_fraction === 'number'">
+          Data coverage: <strong>{{ (station.observed_fraction * 100).toFixed(0) }}%</strong>
+          of the year measured
+        </template>
+        <template v-else>
+          Data coverage: not available for this year
+        </template>
+      </div>
       <div v-else class="detail-none">No data for this year</div>
       <div v-if="station.networks" class="detail-networks">{{ station.networks.split(',').join(' · ') }}</div>
     </div>
@@ -149,6 +164,9 @@ function coord(value: number, positive: string, negative: string) {
 </template>
 
 <style scoped>
+.detail-coverage { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+.detail-coverage strong { color: var(--text); font-weight: 600; }
+
 .detail {
   position: absolute;
   top: 14px;

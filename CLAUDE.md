@@ -46,6 +46,7 @@ docs/mcp-reference.md            generated MCP surface reference — do not hand
 docs/public/openapi.json         generated public REST surface — do not hand-edit
 docs/public/examples/            a real captured MCP exchange, embedded and tested
 docs/docs-site-plan.md           the docs site: decisions, build order, what is live
+docs/scientist-feedback-plan.md  planned UI changes + real data-coverage percentage
 docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 docs/actris-metadata-api-plan.md  plan for moving to the ACTRIS metadata API v3
@@ -73,8 +74,14 @@ index ranges, then fetches only that slice over the OPeNDAP ASCII endpoint
 it is the reason the app is usable.
 
 **Known data-quality caveats** (documented, not yet fixed — see the plan doc):
-- `data_coverage` is set to `1.0 if values else 0.0`. It is a has-data flag, not
-  a coverage fraction, despite the name.
+- ~~`data_coverage` is a has-data flag despite the name~~ — resolved. It is now
+  `observed_fraction`: the share of the year's hours holding a usable value,
+  **unioned** across a station's files rather than summed, because files overlap in
+  time. `NULL` means it could not be determined and is **not** the same as `0.0`;
+  nothing may collapse the two. A file whose sample count contradicts the
+  filename-derived slice length is excluded from the union rather than guessed at —
+  see `union_observed_hours`. Rows written before this change read as `NULL` until
+  a forced re-fetch.
 - **A station-year's mean can mix different measurands.** `fetch_measurements`
   averages every lev2 file overlapping the year, unweighted — and in 2019 that was
   more than one file for 99 of 164 station-variable pairs, mixing size cuts for 54

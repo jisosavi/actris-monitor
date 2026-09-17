@@ -98,7 +98,13 @@ class EbasThreddsClient:
     async def fetch_measurements(self, year: int, variable: str) -> list[dict]:
         """
         Return enriched station records for compute_annual_stats:
-          [{id, name, lat, lon, country, mean, data_coverage}, ...]
+          [{id, name, lat, lon, country, mean, observed_fraction}, ...]
+
+        `observed_fraction` is the share of the year's hours holding at least one
+        usable value, unioned across the station's files rather than summed —
+        files overlap in time and often carry different size cuts, so summing
+        their counts would exceed the year. None where no file's sampling could be
+        confirmed; 0.0 where files were read and held nothing.
         """
         key = f"{year}:{variable}"
         if (hit := self._get_cached(key)) is not None:
@@ -128,7 +134,7 @@ class EbasThreddsClient:
         sem = asyncio.Semaphore(_MAX_CONCURRENT)
         assert self._http
 
-        means, metas = await asyncio.gather(
+        samples, metas = await asyncio.gather(
             asyncio.gather(*[_fetch_file_mean(self._http, f, nc_var, year, target_wl, sem) for f in relevant]),
             asyncio.gather(*[self._get_station_meta(fi, sem) for fi in rep_files.values()]),
         )
@@ -137,16 +143,26 @@ class EbasThreddsClient:
             if meta and fi.station not in self._station_meta:
                 self._station_meta[fi.station] = meta
 
+        # One hour slot per hour of the year — 8784 in a leap year. Unioned, not
+        # counted, so two files covering the same fortnight do not read as a month.
+        hours_in_year = (date(year + 1, 1, 1) - date(year, 1, 1)).days * 24
+
         by_station: dict[str, list[float]] = {}
-        for fi, mean in zip(relevant, means):
-            if mean is not None:
-                by_station.setdefault(fi.station, []).append(mean)
+        for fi, sample in zip(relevant, samples):
+            if sample.mean is not None:
+                by_station.setdefault(fi.station, []).append(sample.mean)
+
+        observed = union_observed_hours(
+            [(fi.station, sample) for fi, sample in zip(relevant, samples)],
+            hours_in_year,
+        )
 
         records = []
         for station_code, meta in self._station_meta.items():
             if station_code not in rep_files:
                 continue
             values = by_station.get(station_code)
+            mask = observed.get(station_code)
             records.append({
                 "id":            station_code,
                 "name":          meta["name"],
@@ -154,7 +170,9 @@ class EbasThreddsClient:
                 "lon":           meta["lon"],
                 "country":       meta["country"],
                 "mean":          float(np.mean(values)) if values else None,
-                "data_coverage": 1.0 if values else 0.0,
+                # None, not 0.0: "we could not tell" and "nothing was measured"
+                # are different claims and the panel shows them differently.
+                "observed_fraction": observed.get(station_code),
                 "networks":      meta.get("networks", ""),
             })
 
@@ -487,6 +505,52 @@ async def _fetch_station_meta_from_das(
         return None
 
 
+@dataclass(frozen=True)
+class _FileSample:
+    """One file's contribution to a station-year.
+
+    `valid_hours` is the hour-of-year indices holding a usable value, or None when
+    the file's sampling could not be confirmed hourly — see `_compute_annual_mean`.
+    None is not the same as an empty array: empty means "observed nothing", None
+    means "we cannot say", and they must not be merged.
+    """
+
+    mean: float | None
+    valid_hours: np.ndarray | None
+
+
+def union_observed_hours(
+    samples: list[tuple[str, _FileSample]], hours_in_year: int
+) -> dict[str, float]:
+    """Per station, the share of the year's hours holding at least one usable value.
+
+    A union, not a sum. Most station-years have several files, they overlap in
+    time, and they often carry different size cuts — adding their counts would put
+    a station past 100% of a year it only partly observed.
+
+    A station appears in the result only if at least one of its files had
+    confirmable sampling. Absent means "cannot say"; 0.0 means "read, and held
+    nothing". Callers must not collapse the two.
+    """
+    masks: dict[str, np.ndarray] = {}
+    for station, sample in samples:
+        if sample.valid_hours is None:
+            continue
+        mask = masks.get(station)
+        if mask is None:
+            mask = np.zeros(hours_in_year, dtype=bool)
+            masks[station] = mask
+        # Cast rather than trust the caller's dtype: an empty array built without
+        # one is float64, and a float array cannot index a mask.
+        valid_hours = np.asarray(sample.valid_hours, dtype=np.int64)
+        mask[valid_hours[(valid_hours >= 0) & (valid_hours < hours_in_year)]] = True
+
+    return {
+        station: round(float(mask.sum()) / hours_in_year, 4)
+        for station, mask in masks.items()
+    }
+
+
 async def _fetch_file_mean(
     client: httpx.AsyncClient,
     fi: _FileInfo,
@@ -494,19 +558,33 @@ async def _fetch_file_mean(
     year: int,
     target_wl: float,
     sem: asyncio.Semaphore,
-) -> float | None:
+) -> _FileSample:
     async with sem:
         url = f"{OPENDAP_BASE}/{fi.name}"
-        idx0, idx1 = _estimate_year_indices(fi, year)
-        return await _compute_annual_mean(client, url, nc_var, idx0, idx1, target_wl)
+        idx0, idx1, hour_offset = _estimate_year_indices(fi, year)
+        return await _compute_annual_mean(
+            client, url, nc_var, idx0, idx1, target_wl, hour_offset
+        )
 
 
-def _estimate_year_indices(fi: _FileInfo, year: int) -> tuple[int, int]:
+def _estimate_year_indices(fi: _FileInfo, year: int) -> tuple[int, int, int]:
+    """Slice bounds within the file, and where the slice starts in the year.
+
+    The third value is the hour-of-year the slice begins at, which is what lets a
+    file's valid samples be mapped onto a shared calendar so several files can be
+    unioned rather than summed.
+
+    All three rest on the same assumption as before — 24 samples per day, inferred
+    from the filename rather than read from the time array. That is tolerable for a
+    mean and load-bearing for a coverage fraction, which is why
+    `_compute_annual_mean` verifies it before using the mapping.
+    """
     effective_start = max(fi.start, date(year, 1, 1))
     effective_end   = min(fi.end,   date(year + 1, 1, 1))
     idx0 = (effective_start - fi.start).days * 24
     idx1 = (effective_end   - fi.start).days * 24 - 1
-    return max(0, idx0), max(0, idx1)
+    hour_offset = (effective_start - date(year, 1, 1)).days * 24
+    return max(0, idx0), max(0, idx1), max(0, hour_offset)
 
 
 async def _compute_annual_mean(
@@ -516,9 +594,10 @@ async def _compute_annual_mean(
     idx0: int,
     idx1: int,
     target_wl: float = 0.0,
-) -> float | None:
+    hour_offset: int = 0,
+) -> _FileSample:
     if idx1 < idx0:
-        return None
+        return _FileSample(None, None)
 
     try:
         wl_idx: int | None = None
@@ -540,10 +619,26 @@ async def _compute_annual_mean(
         data = _parse_first_section_floats(data_text)
 
         if data.size == 0:
-            return None
+            return _FileSample(None, None)
 
-        valid = data[(data > 0) & np.isfinite(data)]
-        return float(np.mean(valid)) if valid.size > 0 else None
+        valid = (data > 0) & np.isfinite(data)
+        mean = float(np.mean(data[valid])) if valid.any() else None
+
+        # The mean is computed from whatever came back, exactly as before. The
+        # coverage mapping is not: it assumes each sample is one hour, and that
+        # assumption is only safe if the array is the length the filename implied.
+        # Where it is not, the file still contributes its mean and contributes
+        # nothing to coverage — a missing fraction beats a confident wrong one.
+        expected = idx1 - idx0 + 1
+        if data.size != expected:
+            logger.info(
+                "Non-hourly sampling in %s: got %d samples where %d hours were "
+                "expected; excluded from coverage",
+                base_url.rsplit("/", 1)[-1], data.size, expected,
+            )
+            return _FileSample(mean, None)
+
+        return _FileSample(mean, hour_offset + np.nonzero(valid)[0])
 
     except Exception:
-        return None
+        return _FileSample(None, None)

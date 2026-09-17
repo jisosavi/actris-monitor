@@ -2,14 +2,14 @@
 Aggregation helpers: transform enriched station records into stats.
 
 Expected input fields (produced by EbasThreddsClient.fetch_measurements):
-  id, name, lat, lon, country, mean, data_coverage
+  id, name, lat, lon, country, mean, observed_fraction
 """
 
 from __future__ import annotations
 import pandas as pd
 import numpy as np
 
-_REQUIRED = {"id", "name", "lat", "lon", "country", "mean", "data_coverage"}
+_REQUIRED = {"id", "name", "lat", "lon", "country", "mean", "observed_fraction"}
 
 
 def compute_annual_stats(
@@ -27,7 +27,9 @@ def compute_annual_stats(
     if missing:
         raise ValueError(f"Station records missing columns: {missing}")
 
-    df["data_coverage"] = df["data_coverage"].fillna(0.0)
+    # Deliberately not filled. A missing observed_fraction means the sampling
+    # could not be confirmed; filling it with 0.0 would claim the station observed
+    # nothing, which is the conflation this field was renamed to end.
 
     prev_map: dict[str, float] = {}
     if prev_raw:
@@ -57,7 +59,10 @@ def compute_annual_stats(
             "unit":          unit,
             "delta_pct":     delta_pct,
             "prev_mean":     round(prev, 3) if prev is not None else None,
-            "data_coverage": round(float(row["data_coverage"]), 3),
+            "observed_fraction": (
+                round(float(row["observed_fraction"]), 4)
+                if pd.notna(row["observed_fraction"]) else None
+            ),
             "networks":      str(row.get("networks", "")),
         })
 

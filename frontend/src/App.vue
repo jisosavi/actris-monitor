@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import ControlPanel from '@/components/ControlPanel.vue'
 import StatsCards from '@/components/StatsCards.vue'
@@ -18,6 +18,72 @@ const { selectedYear, selectedVariable, showDataSetup } = storeToRefs(store)
 const varMeta = computed(() => VARIABLES[selectedVariable.value])
 
 const { data: job } = useFetchProgress()
+
+/**
+ * Drag the ranking panel's top edge to trade space with the map.
+ *
+ * The layout is already a flex column, so only this height is owned here — the
+ * map takes whatever is left. The chart follows on its own: `v-chart` is mounted
+ * with `autoresize`, which watches the container rather than the window.
+ */
+const RANKING_DEFAULT = 240
+const RANKING_MIN = 120          // below this the bars and their labels collide
+const RANKING_MAX_FRACTION = 0.7 // leave the map recognisably a map
+
+function loadRankingHeight(): number {
+  try {
+    const stored = Number(localStorage.getItem('rankingHeight'))
+    if (Number.isFinite(stored) && stored >= RANKING_MIN) return stored
+  } catch {
+    // Private windows and blocked site data throw here; the default is fine.
+  }
+  return RANKING_DEFAULT
+}
+
+const rankingHeight = ref(loadRankingHeight())
+const isDragging = ref(false)
+
+function clampHeight(px: number): number {
+  return Math.min(Math.max(px, RANKING_MIN), window.innerHeight * RANKING_MAX_FRACTION)
+}
+
+function onDragMove(event: PointerEvent) {
+  // The panel is bottom-anchored, so its height is the distance from the pointer
+  // to the bottom of the window.
+  rankingHeight.value = clampHeight(window.innerHeight - event.clientY)
+}
+
+function stopDragging() {
+  if (!isDragging.value) return
+  isDragging.value = false
+  document.body.style.userSelect = ''
+  window.removeEventListener('pointermove', onDragMove)
+  window.removeEventListener('pointerup', stopDragging)
+  try {
+    localStorage.setItem('rankingHeight', String(Math.round(rankingHeight.value)))
+  } catch {
+    // Not being able to remember the size is not worth breaking the drag over.
+  }
+}
+
+function startDragging() {
+  isDragging.value = true
+  // Without this a drag selects the header text it passes over.
+  document.body.style.userSelect = 'none'
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', stopDragging)
+}
+
+function resetRankingHeight() {
+  rankingHeight.value = RANKING_DEFAULT
+  try {
+    localStorage.removeItem('rankingHeight')
+  } catch {
+    // As above.
+  }
+}
+
+onBeforeUnmount(stopDragging)
 const { data: dbStatus } = useDbStatus()
 
 const showFirstRun = computed(() => dbStatus.value?.is_empty === true || showDataSetup.value)
@@ -81,7 +147,17 @@ const isFetching = computed(() => job.value?.status === 'running')
         <div class="map-area">
           <StationMap />
         </div>
-        <div class="ranking-area">
+        <div
+          class="ranking-resize"
+          :class="isDragging && 'ranking-resize--active'"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize the station ranking"
+          title="Drag to resize · double-click to reset"
+          @pointerdown.prevent="startDragging"
+          @dblclick="resetRankingHeight"
+        />
+        <div class="ranking-area" :style="{ height: rankingHeight + 'px' }">
           <RankingChart />
         </div>
       </div>
@@ -218,5 +294,17 @@ const isFetching = computed(() => job.value?.status === 'running')
 /* ── Content ── */
 .content { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .map-area { flex: 1; min-height: 0; position: relative; }
-.ranking-area { height: 240px; flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--border); }
+.ranking-area { flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--border); }
+
+/* A 7px grab strip standing in for the panel's top border: thin enough not to
+   read as a divider, thick enough to hit without aiming. */
+.ranking-resize {
+  height: 7px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: var(--border);
+  transition: background 0.15s ease;
+}
+.ranking-resize:hover,
+.ranking-resize--active { background: var(--accent); }
 </style>

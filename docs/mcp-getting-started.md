@@ -146,8 +146,11 @@ built on these numbers should repeat them:
   published more than one Level 2 file for a year, they are averaged flat — and
   those files may use different size cuts. A step between two years can therefore
   come from a file appearing rather than from a change in the atmosphere.
-- **No figure states what fraction of a year was observed.** There is a
-  `data_coverage` field, but it is a has-data flag despite the name.
+- **How much of the year was actually observed varies enormously**, and
+  `observed_fraction` now says so: the share of the period's hours holding a usable
+  value, 0–1. A station at 0.95 and one at 0.30 both report a single annual mean,
+  and the second one's is worth much less. `null` means it could not be determined,
+  which is not the same as `0.0`.
 
 Neither is a bug, and the reasoning is worth reading before publishing anything
 built on these numbers — see *The aggregation question* in

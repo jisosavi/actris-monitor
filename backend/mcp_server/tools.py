@@ -415,6 +415,14 @@ class SeriesRow(BaseModel):
     period_start: str
     period_end: str
     resolution: Resolution = "annual"
+    observed_fraction: float | None = Field(
+        default=None,
+        description=(
+            "Share of the period's hours holding a usable value, 0-1. Null where it "
+            "could not be determined — not the same as 0.0. Read it before comparing "
+            "means: 0.2 and 0.95 are not the same kind of number."
+        ),
+    )
     mean: float | None = Field(
         description="Null means the period was requested and no usable value exists — not that it was omitted."
     )
@@ -509,9 +517,12 @@ async def get_series(
     stored = await database.get_series_rows(requested, wanted_variables, years[0], years[-1])
 
     by_key: dict[tuple[str, str, int], float | None] = {}
+    coverage_by_key: dict[tuple[str, str, int], float | None] = {}
     names: dict[str, str] = {}
     for row in stored:
-        by_key[(row["station_id"], row["variable"], row["year"])] = row["mean"]
+        key = (row["station_id"], row["variable"], row["year"])
+        by_key[key] = row["mean"]
+        coverage_by_key[key] = row["observed_fraction"]
         names.setdefault(row["station_id"], row["name"])
 
     groups: list[tuple[str, list[SeriesRow]]] = []
@@ -531,6 +542,7 @@ async def get_series(
                         period_start=start_iso,
                         period_end=end_iso,
                         mean=mean if has_value(mean) else None,
+                        observed_fraction=coverage_by_key.get((station_id, variable, year)),
                     )
                 )
         groups.append((station_id, rows))
@@ -577,6 +589,14 @@ class RankingRow(BaseModel):
     country: str
     networks: list[str]
     mean: float
+    observed_fraction: float | None = Field(
+        default=None,
+        description=(
+            "Share of the period's hours holding a usable value, 0-1. Null where it "
+            "could not be determined — not the same as 0.0. Read it before comparing "
+            "means: 0.2 and 0.95 are not the same kind of number."
+        ),
+    )
 
 
 class RankingResult(ProvenancedResult):
@@ -647,6 +667,7 @@ async def get_ranking(
             country=r["country"],
             networks=[n for n in r["networks"].split(",") if n],
             mean=round(r["mean"], 3),
+            observed_fraction=r.get("observed_fraction"),
         )
         for index, r in enumerate(with_data[:limit], start=1)
     ]

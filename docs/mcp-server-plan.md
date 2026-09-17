@@ -116,10 +116,14 @@ These matter more than the tool list.
 
 ## Known limitations, disclosed rather than fixed
 
-1. **`data_coverage` is a boolean in disguise** — `ebas_thredds.py` sets
-   `1.0 if values else 0.0`. The MCP layer never emits it, and every
-   `provenance.coverage_basis` says coverage is presence only. A station with two
-   months of data is indistinguishable from one with twelve.
+1. ~~**`data_coverage` is a boolean in disguise**~~ — **fixed, September 2026.**
+   It set `1.0 if values else 0.0`, so a station with two months of data was
+   indistinguishable from one with twelve. It is now `observed_fraction`: the share
+   of the period's hours holding a usable value, unioned across the station's files
+   rather than summed, and emitted by `get_series` and `get_ranking` as well as the
+   REST API. `NULL` means it could not be determined and is not the same as `0.0`.
+   Asked for by the scientists using the dashboard; see
+   `docs/scientist-feedback-plan.md`.
 2. **A station-year's mean can combine different measurands.** This is the serious
    one, and it is worse than the "unweighted mean of means" it was first recorded
    as. `fetch_measurements` selects every lev2 file whose date range overlaps the
@@ -145,12 +149,21 @@ These matter more than the tool list.
 
    `provenance.mean_method` now says all of this, in every payload.
 
-**Limitation 2 is permanent; limitation 1 is not.** A rigorous replacement for the
-aggregation was specified and then set aside as more than this dashboard needs — see
-*The aggregation question* below — so the mixed-measurand disclosure is not a
-stopgap, it is how these numbers are described, indefinitely. The coverage flag is
-different: the monthly re-fetch would compute coverage properly as a side effect,
-and limitation 1 goes away with it.
+**Limitation 2 is permanent; limitation 1 is now fixed.** A rigorous replacement
+for the aggregation was specified and then set aside as more than this dashboard
+needs — see *The aggregation question* below — so the mixed-measurand disclosure is
+not a stopgap, it is how these numbers are described, indefinitely.
+
+Coverage was always the tractable one, and it did not need the monthly re-fetch this
+document expected: the count was already being computed in `_compute_annual_mean`
+and thrown away. What it did need was the two things the one-line version misses —
+files unioned over hour slots rather than summed, and the filename-derived hourly
+assumption verified before it is used as a denominator.
+
+The two limitations interact, and the disclosure should not overstate the fix. A
+high `observed_fraction` says the year was well observed; it does not say it was
+observed consistently, and it says nothing about whether the files being averaged
+measure the same thing.
 
 ## Tests
 

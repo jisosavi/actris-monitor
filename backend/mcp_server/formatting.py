@@ -59,9 +59,14 @@ MEAN_METHOD = (
 )
 
 COVERAGE_BASIS = (
-    "Presence only. The pipeline records whether any valid value was found for a "
-    "station-year, not what fraction of the period was observed. A station with two "
-    "months of data is indistinguishable here from one with twelve."
+    "`observed_fraction` is the share of the period's hours holding at least one "
+    "usable value, unioned across the station's files rather than summed — files "
+    "overlap in time, so counting them separately would exceed the period. It "
+    "measures how much of the period was observed, not how consistently: a "
+    "station at 0.95 and one at 0.30 both report a single annual mean, and the "
+    "second one's is worth much less. Null means the fraction could not be "
+    "determined, which is not the same as 0.0; a station-year fetched before this "
+    "was computed reads as null until it is re-fetched."
 )
 
 

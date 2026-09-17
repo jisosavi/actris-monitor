@@ -30,7 +30,10 @@ CREATE TABLE IF NOT EXISTS station_records (
     lon           REAL    NOT NULL,
     country       TEXT    NOT NULL,
     mean          REAL,
-    data_coverage REAL    NOT NULL DEFAULT 0.0,
+    -- Nullable on purpose: NULL means the fraction could not be determined,
+    -- 0.0 means the files were read and held nothing. Merging those two was the
+    -- old `data_coverage`, which was a has-data flag wearing a fraction's name.
+    observed_fraction REAL,
     networks      TEXT    NOT NULL DEFAULT '',
     fetched_at    TEXT    NOT NULL
 );
@@ -92,6 +95,68 @@ async def _migrate_add_networks() -> None:
         logger.info("Migrated station_records: added networks column")
 
 
+async def _migrate_observed_fraction() -> None:
+    """Replace `data_coverage` with a nullable `observed_fraction`.
+
+    Two changes at once, because they need the same table rebuild: the name stops
+    lying, and NULL becomes available so "could not determine" is distinguishable
+    from "observed nothing". SQLite cannot relax a NOT NULL in place.
+
+    **Existing values are dropped, not converted.** The old column held
+    `1.0 if values else 0.0` — a has-data flag. Carrying a 1.0 across would assert
+    that a station observed every hour of the year, which is exactly the false
+    claim this change exists to remove. Every pre-existing row becomes NULL and
+    reads as "not available" until a forced re-fetch recomputes it.
+    """
+    assert _db
+    async with _db.execute("PRAGMA table_info(station_records)") as cur:
+        cols = {r["name"] for r in await cur.fetchall()}
+    if "data_coverage" not in cols:
+        return
+
+    async with _write_lock:
+        await _db.executescript(
+            """
+            PRAGMA foreign_keys=off;
+            BEGIN;
+            CREATE TABLE station_records_new (
+                id            INTEGER PRIMARY KEY,
+                year          INTEGER NOT NULL,
+                variable      TEXT    NOT NULL,
+                station_id    TEXT    NOT NULL,
+                name          TEXT    NOT NULL,
+                lat           REAL    NOT NULL,
+                lon           REAL    NOT NULL,
+                country       TEXT    NOT NULL,
+                mean          REAL,
+                observed_fraction REAL,
+                networks      TEXT    NOT NULL DEFAULT '',
+                fetched_at    TEXT    NOT NULL
+            );
+            INSERT INTO station_records_new
+                (id, year, variable, station_id, name, lat, lon, country, mean,
+                 observed_fraction, networks, fetched_at)
+            SELECT id, year, variable, station_id, name, lat, lon, country, mean,
+                   NULL, networks, fetched_at
+            FROM station_records;
+            DROP TABLE station_records;
+            ALTER TABLE station_records_new RENAME TO station_records;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_sr_lookup
+                ON station_records (year, variable, station_id);
+            CREATE INDEX IF NOT EXISTS idx_sr_yv ON station_records (year, variable);
+            CREATE INDEX IF NOT EXISTS idx_sr_station ON station_records (station_id);
+            COMMIT;
+            PRAGMA foreign_keys=on;
+            """
+        )
+        await _db.commit()
+    logger.info(
+        "Migrated station_records: data_coverage -> observed_fraction (nullable). "
+        "Existing values dropped — they were has-data flags, not fractions. "
+        "A forced re-fetch is needed to populate real coverage."
+    )
+
+
 async def init_db(path: str) -> None:
     global _db
     os.makedirs(os.path.dirname(path) if os.path.dirname(path) else ".", exist_ok=True)
@@ -105,6 +170,7 @@ async def init_db(path: str) -> None:
             await _db.execute(stmt)
     await _db.commit()
     await _migrate_add_networks()
+    await _migrate_observed_fraction()
     await _mark_orphaned_jobs_failed()
     logger.info("Database initialised at %s", path)
 
@@ -149,7 +215,7 @@ async def get_station_records_for_id(station_id: str) -> list[dict]:
 async def get_station_records(year: int, variable: str) -> list[dict]:
     assert _db
     async with _db.execute(
-        "SELECT station_id, name, lat, lon, country, mean, data_coverage, networks "
+        "SELECT station_id, name, lat, lon, country, mean, observed_fraction, networks "
         "FROM station_records WHERE year=? AND variable=?",
         (year, variable),
     ) as cur:
@@ -162,7 +228,7 @@ async def get_station_records(year: int, variable: str) -> list[dict]:
             "lon":           r["lon"],
             "country":       r["country"],
             "mean":          r["mean"],
-            "data_coverage": r["data_coverage"],
+            "observed_fraction": r["observed_fraction"],
             "networks":      r["networks"],
         }
         for r in rows
@@ -268,7 +334,8 @@ async def get_series_rows(
     station_slots = ",".join("?" for _ in station_ids)
     variable_slots = ",".join("?" for _ in variables)
     async with _db.execute(
-        "SELECT station_id, name, variable, year, mean FROM station_records "
+        "SELECT station_id, name, variable, year, mean, observed_fraction "
+        "FROM station_records "
         f"WHERE station_id IN ({station_slots}) AND variable IN ({variable_slots}) "
         "AND year BETWEEN ? AND ? "
         "ORDER BY station_id, variable, year",
@@ -282,6 +349,7 @@ async def get_series_rows(
             "name":       r["name"],
             "variable":   r["variable"],
             "year":       r["year"],
+            "observed_fraction": r["observed_fraction"],
             "mean":       r["mean"],
         }
         for r in rows
@@ -334,11 +402,11 @@ async def upsert_station_records(year: int, variable: str, records: list[dict]) 
     async with _write_lock:
         await _db.executemany(
             "INSERT OR REPLACE INTO station_records "
-            "(year, variable, station_id, name, lat, lon, country, mean, data_coverage, networks, fetched_at) "
+            "(year, variable, station_id, name, lat, lon, country, mean, observed_fraction, networks, fetched_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (year, variable, r["id"], r["name"], r["lat"], r["lon"],
-                 r["country"], r.get("mean"), r.get("data_coverage", 0.0),
+                 r["country"], r.get("mean"), r.get("observed_fraction"),
                  r.get("networks", ""), now)
                 for r in records
             ],

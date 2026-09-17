@@ -81,7 +81,10 @@ async def seeded(tmp_path, anyio_backend, monkeypatch):
             records.append({
                 "id": station_id, "name": name, "lat": lat, "lon": lon,
                 "country": country, "mean": MEANS[(station_id, year)],
-                "data_coverage": 1.0, "networks": networks,
+                # Deliberately varied, and null for one station-year: the tools
+                # must carry the value through and must not turn null into 0.
+                "observed_fraction": None if year == 2019 else 0.75,
+                "networks": networks,
             })
         await database.upsert_station_records(year, "N", records)
         usable = [r["mean"] for r in records if r["mean"]]
@@ -297,5 +300,37 @@ async def test_every_tool_carries_provenance(seeded, name, args):
     out = await call(name, args)
     provenance = out["provenance"]
     assert "unweighted" in provenance["mean_method"]
-    assert "Presence only" in provenance["coverage_basis"]
+    # The coverage sentence changed meaning when observed_fraction became a real
+    # share of the period rather than a has-data flag. What has to survive is the
+    # distinction a reader acts on: null is not zero.
+    assert "observed_fraction" in provenance["coverage_basis"]
+    assert "not the same as 0.0" in provenance["coverage_basis"]
     assert provenance["citation"]
+
+
+# ── observed_fraction ─────────────────────────────────────────────────────────
+
+@pytest.mark.anyio
+async def test_series_carries_observed_fraction_including_the_null(seeded) -> None:
+    """Null must survive as null.
+
+    The field replaced one that conflated "could not determine" with "observed
+    nothing". A layer that helpfully defaults it to 0 would reinstate exactly the
+    confusion it was introduced to end, and nothing downstream could tell.
+    """
+    out = await call("get_series", {"stations": ["FI0050R"], "variables": ["N"],
+                                    "start": "2018", "end": "2020"})
+    by_year = {row["period_start"][:4]: row["observed_fraction"] for row in out["rows"]}
+
+    assert by_year["2018"] == 0.75
+    assert by_year["2020"] == 0.75
+    assert by_year["2019"] is None, "a null coverage must not be rendered as 0"
+
+
+@pytest.mark.anyio
+async def test_ranking_carries_observed_fraction(seeded) -> None:
+    """A ranking is where an unobserved year is most likely to mislead."""
+    out = await call("get_ranking", {"period": "2018", "variable": "N"})
+    assert out["rows"], "fixture should produce a ranking"
+    assert all("observed_fraction" in row for row in out["rows"])
+    assert out["rows"][0]["observed_fraction"] == 0.75

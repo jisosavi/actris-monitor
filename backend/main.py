@@ -164,7 +164,7 @@ async def admin_check(_: None = Depends(require_admin)):
                             "unit": "cm-3",
                             "delta_pct": -4.12,
                             "prev_mean": 1818.19,
-                            "data_coverage": 1.0,
+                            "observed_fraction": 0.8213,
                             "networks": "ACTRIS,EMEP,GAW-WDCA",
                         }
                     ]
@@ -187,8 +187,12 @@ async def get_stations(year: int, variable: VariableKey):
       station published more than one Level 2 file, they are averaged flat, and
       those files may use different size cuts. A step between years can therefore
       come from a file appearing rather than from the atmosphere.
-    - **`data_coverage` is a has-data flag, not a fraction.** It is `1.0` where any
-      value was found and `0.0` otherwise, despite the name.
+    - **`observed_fraction` says how much of the year was observed**, 0-1: the share
+      of the year's hours holding at least one usable value, unioned across the
+      station's files rather than summed. Read it before comparing two means — 0.2
+      and 0.95 are not the same kind of number. `null` means it could not be
+      determined, which is not the same as `0.0`, and a station-year fetched before
+      this was computed reads as `null` until it is re-fetched.
     """
     if variable not in VARIABLES:
         raise HTTPException(400, f"Unknown variable '{variable}'")

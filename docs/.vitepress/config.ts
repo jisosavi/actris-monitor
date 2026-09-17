@@ -83,6 +83,7 @@ export default defineConfig({
   srcExclude: [
     'README.md',
     'docs-site-plan.md',
+    'scientist-feedback-plan.md',
     'nrt-integration-plan.md',
     'actris-metadata-api-plan.md',
   ],
