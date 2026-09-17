@@ -46,6 +46,7 @@ docs/mcp-reference.md            generated MCP surface reference — do not hand
 docs/public/openapi.json         generated public REST surface — do not hand-edit
 docs/public/examples/            a real captured MCP exchange, embedded and tested
 docs/docs-site-plan.md           the docs site: decisions, build order, what is live
+docs/scientist-feedback-plan.md  planned UI changes + real data-coverage percentage
 docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 docs/actris-metadata-api-plan.md  plan for moving to the ACTRIS metadata API v3
