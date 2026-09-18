@@ -119,8 +119,18 @@ def test_bracket_covers_the_year_and_nothing_beyond_the_array() -> None:
     assert lo == 0
     assert hi <= axis.n - 1, "a bracket must never point past the array"
 
-    # A year the file does not reach at all.
+    # Years the file does not reach, on either side. Before the fix a year
+    # *earlier* than the file returned a small range at index 0 instead of None,
+    # which cost a wasted request for every non-covering file.
     assert axis.bracket(date(2010, 1, 1), date(2011, 1, 1)) is None
+    assert axis.bracket(date(1998, 1, 1), date(1999, 1, 1)) is None
+
+
+def test_a_year_with_fewer_samples_than_one_stride_is_still_found() -> None:
+    """Equal searchsorted bounds do not mean absent — sparse years have data."""
+    times = _hourly(date(2003, 1, 1), 24 * 300) + _hourly(date(2005, 6, 1), 3)
+    axis = _axis(times, stride=100)
+    assert axis.bracket(date(2005, 1, 1), date(2006, 1, 1)) is not None
 
 
 @pytest.mark.anyio

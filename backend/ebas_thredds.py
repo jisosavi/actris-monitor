@@ -654,11 +654,20 @@ class _TimeAxis:
         return float((day - self.epoch).days)
 
     def bracket(self, first: date, last: date) -> tuple[int, int] | None:
-        """Index range certain to contain [first, last), widened by one stride."""
-        lo = int(np.searchsorted(self.coarse, self.value_for(first), side="left"))
-        hi = int(np.searchsorted(self.coarse, self.value_for(last), side="right"))
-        if lo >= len(self.coarse) and hi >= len(self.coarse):
+        """Index range certain to contain [first, last), widened by one stride.
+
+        None when the interval lies wholly outside the file. Tested against the
+        file's own first and last timestamps rather than against `searchsorted`
+        returning equal bounds: a year holding fewer samples than one stride also
+        produces equal bounds, and it does have data. The widening below is what
+        finds it.
+        """
+        lo_val, hi_val = self.value_for(first), self.value_for(last)
+        if hi_val <= self.coarse[0] or lo_val >= self.coarse[-1]:
             return None
+
+        lo = int(np.searchsorted(self.coarse, lo_val, side="left"))
+        hi = int(np.searchsorted(self.coarse, hi_val, side="right"))
         i0 = max(0, (lo - 1) * self.stride)
         i1 = min(self.n - 1, (hi + 1) * self.stride)
         return (i0, i1) if i1 >= i0 else None
