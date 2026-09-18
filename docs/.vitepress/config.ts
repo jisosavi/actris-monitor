@@ -84,6 +84,7 @@ export default defineConfig({
     'README.md',
     'docs-site-plan.md',
     'scientist-feedback-plan.md',
+    'year-slicing-plan.md',
     'nrt-integration-plan.md',
     'actris-metadata-api-plan.md',
   ],
