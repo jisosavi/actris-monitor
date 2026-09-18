@@ -75,7 +75,13 @@ class _FileInfo:
     name: str
     instrument: str
     start: date
+    #: Last day the data covers, from the filename's duration field. Approximate —
+    #: the duration is nominal and a file usually holds less. Use it to decide
+    #: which files to *consider* for a year, never to compute an index.
     end: date
+    #: When the file was last revised. This is `parts[2]`, which the first version
+    #: of this parser mistook for the end date — see docs/year-slicing-plan.md.
+    revision: date
 
 
 
@@ -86,6 +92,10 @@ class EbasThreddsClient:
         self._catalog: tuple[list[_FileInfo], datetime] | None = None
         self._station_meta: dict[str, dict] = {}
         self._data_cache: dict[str, tuple[Any, datetime]] = {}
+        # Time axes are per file, not per (file, year): a seven-year file serves
+        # seven years from one read. None means the file has no usable time
+        # coordinate and is not worth asking again.
+        self._time_axes: dict[str, _TimeAxis | None] = {}
         self._actris_codes: set[str] | None = None
 
     async def start(self) -> None:
@@ -134,10 +144,24 @@ class EbasThreddsClient:
         sem = asyncio.Semaphore(_MAX_CONCURRENT)
         assert self._http
 
-        samples, metas = await asyncio.gather(
-            asyncio.gather(*[_fetch_file_mean(self._http, f, nc_var, year, target_wl, sem) for f in relevant]),
+        # The time axis first: every window below is cut from it, so a file
+        # without one contributes nothing rather than being sliced by guesswork.
+        axes, metas = await asyncio.gather(
+            asyncio.gather(*[self._get_time_axis(f, sem) for f in relevant]),
             asyncio.gather(*[self._get_station_meta(fi, sem) for fi in rep_files.values()]),
         )
+        usable = [(f, ax) for f, ax in zip(relevant, axes) if ax is not None]
+        if len(usable) < len(relevant):
+            logger.info(
+                "%d of %d %s files for %d have no usable time axis",
+                len(relevant) - len(usable), len(relevant), variable, year,
+            )
+
+        samples = await asyncio.gather(*[
+            _fetch_file_mean(self._http, f, nc_var, year, target_wl, sem, ax)
+            for f, ax in usable
+        ])
+        relevant = [f for f, _ in usable]
 
         for fi, meta in zip(rep_files.values(), metas):
             if meta and fi.station not in self._station_meta:
@@ -162,7 +186,6 @@ class EbasThreddsClient:
             if station_code not in rep_files:
                 continue
             values = by_station.get(station_code)
-            mask = observed.get(station_code)
             records.append({
                 "id":            station_code,
                 "name":          meta["name"],
@@ -266,6 +289,15 @@ class EbasThreddsClient:
         self._catalog = (files, datetime.now())
         return files
 
+    async def _get_time_axis(self, fi: _FileInfo, sem: asyncio.Semaphore) -> _TimeAxis | None:
+        if fi.name in self._time_axes:
+            return self._time_axes[fi.name]
+        async with sem:
+            assert self._http
+            axis = await _fetch_time_axis(self._http, f"{OPENDAP_BASE}/{fi.name}", fi.name)
+        self._time_axes[fi.name] = axis
+        return axis
+
     async def _get_station_meta(self, fi: _FileInfo, sem: asyncio.Semaphore) -> dict | None:
         if fi.station in self._station_meta:
             return self._station_meta[fi.station]
@@ -285,6 +317,24 @@ class EbasThreddsClient:
 
 
 # ── Catalog parsing ───────────────────────────────────────────────────────────
+
+_DURATION_RE = re.compile(r"^(\d+)(mn|h|d|w|mo|y)$")
+
+#: Nominal lengths. Months and years are approximate on purpose: this only has to
+#: be good enough to decide which files a year could plausibly fall in, and the
+#: true extent is read from the file's own time coordinate later.
+_DURATION_DAYS: dict[str, float] = {
+    "mn": 1 / 1440, "h": 1 / 24, "d": 1, "w": 7, "mo": 30.44, "y": 365.25,
+}
+
+
+def _parse_duration(token: str) -> timedelta | None:
+    """`7y`, `3mo`, `10w`, `1h` → a duration. None when the field is not one."""
+    m = _DURATION_RE.match(token)
+    if not m:
+        return None
+    return timedelta(days=int(m.group(1)) * _DURATION_DAYS[m.group(2)])
+
 
 def _parse_catalog(xml_text: str) -> list[_FileInfo]:
     root = ET.fromstring(xml_text)
@@ -310,13 +360,30 @@ def _parse_catalog(xml_text: str) -> list[_FileInfo]:
             continue
         try:
             start = datetime.strptime(parts[1][:8], "%Y%m%d").date()
-            end   = datetime.strptime(parts[2][:8], "%Y%m%d").date()
+            revision = datetime.strptime(parts[2][:8], "%Y%m%d").date()
+
+            # The extent comes from the duration field, not from parts[2]. That
+            # field is when the file was revised, and it is typically years after
+            # the data ends — 96% of the catalogue, median 7.9 years out. Treating
+            # it as the end made every multi-year file claim years it does not
+            # hold, and the slice for those years ran off the end of the array.
+            duration = _parse_duration(parts[6]) if len(parts) > 6 else None
+            if duration is None:
+                # ~20 files in the catalogue. Fall back to the revision date and
+                # let the time-coordinate check below reject what it must; the
+                # alternative is dropping the file on a naming quirk.
+                logger.debug("No duration field in %s; falling back to revision date", name)
+                end = revision
+            else:
+                end = start + duration
+
             files.append(_FileInfo(
                 station=parts[0],
                 name=name,
                 instrument=parts[3],
                 start=start,
                 end=end,
+                revision=revision,
             ))
         except (ValueError, IndexError):
             continue
@@ -551,6 +618,94 @@ def union_observed_hours(
     }
 
 
+#: How many points to sample when mapping a file's time coordinate. Enough to
+#: locate a year boundary to within a few hours on any file in the catalogue,
+#: while staying a small fraction of the data slice it saves us mis-reading.
+_TIME_COARSE_POINTS = 2000
+
+_TIME_UNITS_RE = re.compile(r"units\s+\"?\s*(second|minute|hour|day)s?\s+since\s+(\d{4}-\d{2}-\d{2})")
+
+_UNIT_DAYS = {"second": 1 / 86400, "minute": 1 / 1440, "hour": 1 / 24, "day": 1.0}
+
+
+@dataclass(frozen=True)
+class _TimeAxis:
+    """A file's time coordinate, sampled coarsely and expressed in days.
+
+    The filename cannot answer where a year sits inside a file. Its duration field
+    is nominal — `7y` on a file holding 51,674 hourly samples, where seven years is
+    61,368 — and an internal gap moves every sample after it. Both were true of the
+    catalogue, and between them they lost years and mislabelled others.
+
+    So the year's bounds come from here instead: `coarse` holds every `stride`-th
+    time value, converted to days since `epoch`, which is enough to bracket a year
+    before reading the exact values in that bracket.
+    """
+
+    n: int
+    stride: int
+    coarse: np.ndarray
+    epoch: date
+    #: Days per raw time unit, so a raw `time` slice can be converted the same way
+    #: `coarse` already has been.
+    unit_days: float
+
+    def value_for(self, day: date) -> float:
+        return float((day - self.epoch).days)
+
+    def bracket(self, first: date, last: date) -> tuple[int, int] | None:
+        """Index range certain to contain [first, last), widened by one stride."""
+        lo = int(np.searchsorted(self.coarse, self.value_for(first), side="left"))
+        hi = int(np.searchsorted(self.coarse, self.value_for(last), side="right"))
+        if lo >= len(self.coarse) and hi >= len(self.coarse):
+            return None
+        i0 = max(0, (lo - 1) * self.stride)
+        i1 = min(self.n - 1, (hi + 1) * self.stride)
+        return (i0, i1) if i1 >= i0 else None
+
+
+async def _fetch_time_axis(
+    client: httpx.AsyncClient, base_url: str, name: str
+) -> _TimeAxis | None:
+    """Read a file's length, time units and a coarse sample of its time values.
+
+    One per file, cached by the caller — a seven-year file serves seven years, so
+    the cost amortises across them.
+    """
+    try:
+        dds = await client.get(f"{base_url}.dds", timeout=60.0)
+        dds.raise_for_status()
+        m = re.search(r"time\s*\[\s*time\s*=\s*(\d+)\s*\]", dds.text)
+        if not m:
+            logger.info("No time dimension in %s; cannot place a year in it", name)
+            return None
+        n = int(m.group(1))
+        if n < 1:
+            return None
+
+        das = await client.get(f"{base_url}.das", timeout=60.0)
+        das.raise_for_status()
+        um = _TIME_UNITS_RE.search(das.text)
+        if not um:
+            logger.info("Unreadable time units in %s; skipping the file", name)
+            return None
+        unit_days = _UNIT_DAYS[um.group(1)]
+        epoch = datetime.strptime(um.group(2), "%Y-%m-%d").date()
+
+        stride = max(1, n // _TIME_COARSE_POINTS)
+        text = await _fetch_opendap_ascii(client, base_url, f"time[0:{stride}:{n - 1}]")
+        coarse = _parse_first_section_floats(text) * unit_days
+        if coarse.size == 0:
+            return None
+        return _TimeAxis(
+            n=n, stride=stride, coarse=coarse, epoch=epoch, unit_days=unit_days
+        )
+
+    except Exception as exc:
+        logger.info("Could not read the time axis of %s: %s", name, exc)
+        return None
+
+
 async def _fetch_file_mean(
     client: httpx.AsyncClient,
     fi: _FileInfo,
@@ -558,87 +713,69 @@ async def _fetch_file_mean(
     year: int,
     target_wl: float,
     sem: asyncio.Semaphore,
+    axis: _TimeAxis,
 ) -> _FileSample:
+    """This file's contribution to one station-year, windowed by its own clock."""
     async with sem:
-        url = f"{OPENDAP_BASE}/{fi.name}"
-        idx0, idx1, hour_offset = _estimate_year_indices(fi, year)
-        return await _compute_annual_mean(
-            client, url, nc_var, idx0, idx1, target_wl, hour_offset
-        )
+        base_url = f"{OPENDAP_BASE}/{fi.name}"
+        jan1, next_jan1 = date(year, 1, 1), date(year + 1, 1, 1)
 
-
-def _estimate_year_indices(fi: _FileInfo, year: int) -> tuple[int, int, int]:
-    """Slice bounds within the file, and where the slice starts in the year.
-
-    The third value is the hour-of-year the slice begins at, which is what lets a
-    file's valid samples be mapped onto a shared calendar so several files can be
-    unioned rather than summed.
-
-    All three rest on the same assumption as before — 24 samples per day, inferred
-    from the filename rather than read from the time array. That is tolerable for a
-    mean and load-bearing for a coverage fraction, which is why
-    `_compute_annual_mean` verifies it before using the mapping.
-    """
-    effective_start = max(fi.start, date(year, 1, 1))
-    effective_end   = min(fi.end,   date(year + 1, 1, 1))
-    idx0 = (effective_start - fi.start).days * 24
-    idx1 = (effective_end   - fi.start).days * 24 - 1
-    hour_offset = (effective_start - date(year, 1, 1)).days * 24
-    return max(0, idx0), max(0, idx1), max(0, hour_offset)
-
-
-async def _compute_annual_mean(
-    client: httpx.AsyncClient,
-    base_url: str,
-    nc_var: str,
-    idx0: int,
-    idx1: int,
-    target_wl: float = 0.0,
-    hour_offset: int = 0,
-) -> _FileSample:
-    if idx1 < idx0:
-        return _FileSample(None, None)
-
-    try:
-        wl_idx: int | None = None
-        if target_wl > 0:
-            try:
-                wl_text = await _fetch_opendap_ascii(client, base_url, f"{nc_var}.Wavelength")
-                wl_vals = _parse_first_section_floats(wl_text)
-                if wl_vals.size > 0:
-                    wl_idx = int(np.argmin(np.abs(wl_vals - target_wl)))
-            except Exception:
-                pass
-
-        constraint = (
-            f"{nc_var}[{wl_idx}][{idx0}:{idx1}]" if wl_idx is not None
-            else f"{nc_var}[{idx0}:{idx1}]"
-        )
-
-        data_text = await _fetch_opendap_ascii(client, base_url, constraint)
-        data = _parse_first_section_floats(data_text)
-
-        if data.size == 0:
+        bracket = axis.bracket(jan1, next_jan1)
+        if bracket is None:
             return _FileSample(None, None)
+        i0, i1 = bracket
+
+        try:
+            wl_idx: int | None = None
+            if target_wl > 0:
+                try:
+                    wl_text = await _fetch_opendap_ascii(client, base_url, f"{nc_var}.Wavelength")
+                    wl_vals = _parse_first_section_floats(wl_text)
+                    if wl_vals.size > 0:
+                        wl_idx = int(np.argmin(np.abs(wl_vals - target_wl)))
+                except Exception as exc:
+                    logger.debug("No wavelength axis in %s: %s", fi.name, exc)
+
+            constraint = (
+                f"{nc_var}[{wl_idx}][{i0}:{i1}]" if wl_idx is not None
+                else f"{nc_var}[{i0}:{i1}]"
+            )
+            data_text = await _fetch_opendap_ascii(client, base_url, constraint)
+            data = _parse_first_section_floats(data_text)
+
+            time_text = await _fetch_opendap_ascii(client, base_url, f"time[{i0}:{i1}]")
+            times = _parse_first_section_floats(time_text)
+
+        except Exception as exc:
+            # Previously `except Exception: return None`, which is how a defect
+            # affecting most multi-year files stayed invisible for months. Whatever
+            # goes wrong here, say so.
+            logger.warning(
+                "Fetch failed for %s [%d:%d] year %d: %s", fi.name, i0, i1, year, exc
+            )
+            return _FileSample(None, None)
+
+        if data.size == 0 or times.size != data.size:
+            logger.info(
+                "%s year %d: %d values against %d timestamps; skipped",
+                fi.name, year, data.size, times.size,
+            )
+            return _FileSample(None, None)
+
+        # Trim the widened bracket to the year, using the file's own timestamps.
+        # This is the whole point: nothing here infers a date from an index.
+        days = times * axis.unit_days
+        inside = (days >= axis.value_for(jan1)) & (days < axis.value_for(next_jan1))
+        if not inside.any():
+            return _FileSample(None, None)
+
+        data, days = data[inside], days[inside]
 
         valid = (data > 0) & np.isfinite(data)
         mean = float(np.mean(data[valid])) if valid.any() else None
 
-        # The mean is computed from whatever came back, exactly as before. The
-        # coverage mapping is not: it assumes each sample is one hour, and that
-        # assumption is only safe if the array is the length the filename implied.
-        # Where it is not, the file still contributes its mean and contributes
-        # nothing to coverage — a missing fraction beats a confident wrong one.
-        expected = idx1 - idx0 + 1
-        if data.size != expected:
-            logger.info(
-                "Non-hourly sampling in %s: got %d samples where %d hours were "
-                "expected; excluded from coverage",
-                base_url.rsplit("/", 1)[-1], data.size, expected,
-            )
-            return _FileSample(mean, None)
-
-        return _FileSample(mean, hour_offset + np.nonzero(valid)[0])
-
-    except Exception:
-        return _FileSample(None, None)
+        # Hour of the year for each usable sample, from its timestamp rather than
+        # its position. A gap in the file now costs coverage, as it should, instead
+        # of shifting every sample after it.
+        hours = np.floor((days[valid] - axis.value_for(jan1)) * 24).astype(np.int64)
+        return _FileSample(mean, hours)

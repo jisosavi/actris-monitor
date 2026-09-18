@@ -47,6 +47,7 @@ docs/public/openapi.json         generated public REST surface — do not hand-e
 docs/public/examples/            a real captured MCP exchange, embedded and tested
 docs/docs-site-plan.md           the docs site: decisions, build order, what is live
 docs/scientist-feedback-plan.md  planned UI changes + real data-coverage percentage
+docs/year-slicing-plan.md        FILE EXTENTS ARE MIS-PARSED — missing and mislabelled years
 docs/mcp-server-plan.md          MCP: what exists, what might still be done, why
 docs/nrt-integration-plan.md     plan for linking EBAS near-real-time data to the map
 docs/actris-metadata-api-plan.md  plan for moving to the ACTRIS metadata API v3
@@ -67,11 +68,25 @@ query change. See `docs/mcp-server-plan.md`.
 `INSTRUMENT_MAP` (`N`→cpc, `scattering`→nephelometer,
 `absorption`→filter_absorption_photometer).
 
-**Year slices are estimated from filenames, not from the time array.** The client
-decodes start/end dates from the dot-separated filename convention and computes
-index ranges, then fetches only that slice over the OPeNDAP ASCII endpoint
-(~130 KB instead of a whole file). Don't "simplify" this into a full download —
-it is the reason the app is usable.
+**Year slices come from the file's own time coordinate.** They used to be
+estimated from the filename, and both halves of that estimate were wrong: `parts[2]`
+is the file's *revision* date rather than its end (96% of the catalogue, median 7.9
+years out), and index was assumed to equal hour-offset, which only holds for a
+gapless grid. Together they lost the tail year of every multi-year file to a silent
+HTTP 400, and shifted the values of every year after an internal gap — Pallas
+scattering's stored "2004" was 2005's data. See `docs/year-slicing-plan.md`.
+
+Now `_fetch_time_axis` reads the length, the time units and a strided sample of the
+time values **once per file** (cached — a seven-year file serves seven years from
+one read). `_TimeAxis.bracket` brackets the year in that sample, the data and its
+timestamps are fetched for the widened bracket, and the window is trimmed by the
+timestamps themselves. Nothing infers a date from an index.
+
+`parts[6]`, the duration field, gives the nominal extent and is used only to decide
+which files to *consider* for a year. It is not accurate enough to slice with: `7y`
+implies 61,368 samples on a file holding 51,674.
+
+Still fetch slices, not whole files — that is the reason the app is usable.
 
 **Known data-quality caveats** (documented, not yet fixed — see the plan doc):
 - ~~`data_coverage` is a has-data flag despite the name~~ — resolved. It is now
@@ -101,12 +116,13 @@ it is the reason the app is usable.
   `pm1_humidified`, `aerosol_humidified`). Confirmed with Antti Hyvärinen (FMI);
   scattering only, 24 files. It changed no values — those files were already
   failing silently, see below — so the exclusion makes an accident deliberate.
-- **A file whose netCDF lacks the exact `NC_VAR` name is silently skipped.**
-  `_compute_annual_mean` ends in a bare `except Exception: return None`, so a file
-  storing `aerosol_light_scattering_coefficient` rather than
-  `..._amean` contributes nothing and logs nothing. In a 21-file sample, 1 was
-  affected. This is how humidified files were already being dropped before anyone
-  decided to drop them, and it may be discarding legitimate data elsewhere.
+- ~~**A file whose netCDF lacks the exact `NC_VAR` name is silently skipped**~~ —
+  the skipping remains, the silence does not. That bare `except Exception: return
+  None` was filed here as a rare problem about variable names; it was in fact
+  hiding the year-slicing defect above, on most multi-year files, for months. Every
+  failed fetch now logs the file, the index range, the year and the error. **Do not
+  reintroduce a silent `return None` on a network path** — it is the single change
+  that would have turned months of missing data into an afternoon's work.
 - **A fetch skips combinations already in `db_coverage` unless `force` is set.**
   Without it a refresh is a silent no-op on a populated database, which is what
   "Refresh variable" was until the flag existed. Any change to selection or

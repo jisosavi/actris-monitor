@@ -21,12 +21,16 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import asyncio
+import json
+
 import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import ebas_thredds as et  # noqa: E402
+from datetime import timedelta  # noqa: E402
 from ebas_thredds import _FileInfo, _FileSample, union_observed_hours  # noqa: E402
 
 HOURS_2023 = 8760
@@ -75,56 +79,135 @@ def test_hours_outside_the_year_are_dropped() -> None:
     assert out["X"] == pytest.approx(round(2 / HOURS_2023, 4))
 
 
-def test_year_indices_report_where_the_slice_starts() -> None:
-    """The hour offset is what lets several files share one calendar."""
+def _axis(times_days, epoch=date(1900, 1, 1), stride=24):
+    """A _TimeAxis over an explicit list of timestamps, as the file would report."""
+    arr = np.asarray(times_days, dtype=float)
+    return et._TimeAxis(
+        n=arr.size, stride=stride, coarse=arr[::stride], epoch=epoch, unit_days=1.0
+    )
+
+
+def _days(d: date, epoch: date = date(1900, 1, 1)) -> float:
+    return float((d - epoch).days)
+
+
+def _hourly(first: date, hours: int, epoch: date = date(1900, 1, 1)):
+    return [_days(first, epoch) + h / 24 for h in range(hours)]
+
+
+def _patch_fetch(monkeypatch, times, values):
+    """Serve `time[...]` and the data variable from in-memory arrays."""
+    import json
+
+    async def fake_fetch(client, base_url, constraint):  # noqa: ANN001
+        inside = constraint[constraint.index("[") + 1 : constraint.rindex("]")]
+        lo, hi = (int(x) for x in inside.split(":")[-2:])
+        src = times if constraint.startswith("time[") else values
+        return json.dumps(list(src[lo : hi + 1]))
+
+    monkeypatch.setattr(et, "_fetch_opendap_ascii", fake_fetch)
+    monkeypatch.setattr(
+        et, "_parse_first_section_floats", lambda t: np.array(json.loads(t), dtype=float)
+    )
+
+
+def test_bracket_covers_the_year_and_nothing_beyond_the_array() -> None:
+    times = _hourly(date(2003, 1, 1), 24 * 400)
+    axis = _axis(times)
+
+    lo, hi = axis.bracket(date(2003, 1, 1), date(2004, 1, 1))
+    assert lo == 0
+    assert hi <= axis.n - 1, "a bracket must never point past the array"
+
+    # A year the file does not reach at all.
+    assert axis.bracket(date(2010, 1, 1), date(2011, 1, 1)) is None
+
+
+@pytest.mark.anyio
+async def test_a_gap_does_not_shift_the_year(monkeypatch) -> None:
+    """The bug this whole change exists for.
+
+    A file that starts in 2000, stops, and resumes in 2002. Index arithmetic put
+    2002's window a year early and reported 2001's numbers under 2002. Cutting the
+    window by the file's own timestamps cannot do that.
+    """
+    early = _hourly(date(2000, 1, 1), 24 * 10)      # value 1.0
+    late = _hourly(date(2002, 1, 1), 24 * 10)       # value 9.0
+    times = early + late
+    values = [1.0] * len(early) + [9.0] * len(late)
+    _patch_fetch(monkeypatch, times, values)
+
     fi = _FileInfo(
         name="x.nc", station="FI0050R", instrument="cpc",
-        start=date(2023, 1, 1), end=date(2024, 1, 1),
+        start=date(2000, 1, 1), end=date(2003, 1, 1), revision=date(2020, 1, 1),
     )
-    idx0, idx1, offset = et._estimate_year_indices(fi, 2023)
-    assert (idx0, offset) == (0, 0)
-    assert idx1 == HOURS_2023 - 1
+    sem = asyncio.Semaphore(4)
 
-    mid = _FileInfo(
-        name="y.nc", station="FI0050R", instrument="cpc",
-        start=date(2023, 7, 1), end=date(2024, 1, 1),
-    )
-    _, _, mid_offset = et._estimate_year_indices(mid, 2023)
-    assert mid_offset == (date(2023, 7, 1) - date(2023, 1, 1)).days * 24
+    got_2002 = await et._fetch_file_mean(None, fi, "v", 2002, 0.0, sem, _axis(times))
+    assert got_2002.mean == pytest.approx(9.0), "2002 must read 2002's values"
+
+    got_2000 = await et._fetch_file_mean(None, fi, "v", 2000, 0.0, sem, _axis(times))
+    assert got_2000.mean == pytest.approx(1.0)
+
+    got_2001 = await et._fetch_file_mean(None, fi, "v", 2001, 0.0, sem, _axis(times))
+    assert got_2001.mean is None, "a year inside the gap holds nothing"
 
 
 @pytest.mark.anyio
-async def test_sample_count_disagreeing_with_the_filename_yields_no_coverage(monkeypatch) -> None:
-    """The mean survives; the coverage claim does not.
+async def test_hours_come_from_timestamps_not_positions(monkeypatch) -> None:
+    """Coverage must fall when a file has a hole, not slide along with it."""
+    times = _hourly(date(2005, 1, 1), 24) + _hourly(date(2005, 6, 1), 24)
+    values = [2.0] * 48
+    _patch_fetch(monkeypatch, times, values)
 
-    `_estimate_year_indices` infers 24 samples a day from the filename and never
-    reads the time array. That is tolerable for a mean and load-bearing for a
-    fraction, so a file whose length contradicts the inference is excluded from
-    coverage rather than guessed at.
-    """
-    async def fake_fetch(client, base_url, constraint):  # noqa: ANN001
-        return "unused"
+    fi = _FileInfo(
+        name="y.nc", station="X", instrument="cpc",
+        start=date(2005, 1, 1), end=date(2006, 1, 1), revision=date(2020, 1, 1),
+    )
+    out = await et._fetch_file_mean(None, fi, "v", 2005, 0.0, asyncio.Semaphore(2), _axis(times))
 
-    # 24 values where the slice asked for 48 hours: not hourly.
-    monkeypatch.setattr(et, "_fetch_opendap_ascii", fake_fetch)
-    monkeypatch.setattr(et, "_parse_first_section_floats", lambda _text: np.full(24, 5.0))
-
-    result = await et._compute_annual_mean(None, "http://x/file.nc", "var", 0, 47, 0.0, 0)
-    assert result.mean == pytest.approx(5.0), "the mean is unchanged behaviour"
-    assert result.valid_hours is None, "coverage must not be inferred from a wrong denominator"
+    assert out.valid_hours is not None
+    assert len(out.valid_hours) == 48
+    # 1 January and 1 June, not 48 consecutive hours from the file's start.
+    assert out.valid_hours[0] == 0
+    assert out.valid_hours[24] == (date(2005, 6, 1) - date(2005, 1, 1)).days * 24
 
 
 @pytest.mark.anyio
-async def test_matching_sample_count_maps_onto_the_year(monkeypatch) -> None:
-    async def fake_fetch(client, base_url, constraint):  # noqa: ANN001
-        return "unused"
+async def test_a_failed_fetch_is_logged_not_swallowed(monkeypatch, caplog) -> None:
+    """The silence was the reason this went unnoticed for months."""
+    async def boom(client, base_url, constraint):  # noqa: ANN001
+        raise RuntimeError("Invalid Parameter Exception: DArray")
 
-    values = np.array([1.0, -999.0, 3.0, np.nan, 5.0])  # two invalid
-    monkeypatch.setattr(et, "_fetch_opendap_ascii", fake_fetch)
-    monkeypatch.setattr(et, "_parse_first_section_floats", lambda _text: values)
+    monkeypatch.setattr(et, "_fetch_opendap_ascii", boom)
+    fi = _FileInfo(
+        name="z.nc", station="X", instrument="cpc",
+        start=date(2000, 1, 1), end=date(2001, 1, 1), revision=date(2020, 1, 1),
+    )
+    axis = _axis(_hourly(date(2000, 1, 1), 48))
 
-    result = await et._compute_annual_mean(None, "http://x/file.nc", "var", 0, 4, 0.0, 100)
-    assert result.valid_hours is not None
-    # Offset applied, invalid samples excluded.
-    assert list(result.valid_hours) == [100, 102, 104]
-    assert result.mean == pytest.approx(3.0)
+    with caplog.at_level("WARNING"):
+        out = await et._fetch_file_mean(None, fi, "v", 2000, 0.0, asyncio.Semaphore(2), axis)
+
+    assert out.mean is None
+    assert any("z.nc" in r.getMessage() for r in caplog.records), (
+        "the failure must name the file"
+    )
+
+
+def test_duration_field_is_the_extent_not_the_revision_date() -> None:
+    """parts[2] is when the file was revised; parts[6] is how much data it holds."""
+    assert et._parse_duration("7y") == timedelta(days=7 * 365.25)
+    assert et._parse_duration("3mo") == timedelta(days=3 * 30.44)
+    assert et._parse_duration("10w") == timedelta(days=70)
+    assert et._parse_duration("banana") is None
+
+    name = ("FI0096G.20000202120000.20181031145000.nephelometer..aerosol.7y.1h."
+            "a.b.lev2.nc")
+    xml = ('<catalog xmlns="http://www.unidata.ucar.edu/namespaces/thredds/InvCatalog/v1.0">'
+           f'<dataset name="{name}"/></catalog>')
+    fi = et._parse_catalog(xml)[0]
+
+    assert fi.start == date(2000, 2, 2)
+    assert fi.revision == date(2018, 10, 31), "parts[2] kept under its real name"
+    assert fi.end.year == 2007, "extent comes from 7y, not from the 2018 revision"
