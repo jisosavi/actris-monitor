@@ -2,7 +2,14 @@
 
 The app is missing years that EBAS holds, and some of the years it does show are
 computed from the wrong window. Found 2026-09-18 from user feedback about Pallas
-(Sammaltunturi) and Värriö. **Not implemented.**
+(Sammaltunturi) and Värriö.
+
+**Status: phases 0-2 and 4 are implemented.** Phase 3 — the forced re-fetch that
+reaches stored values — has not been run, so the live numbers are still the old
+ones. Verified against the Pallas file that was failing: 2005 and 2006 now return
+values where they returned nothing, 2007 correctly returns nothing because the file
+ends 2006-12-31, and the recomputed 2005 (7.824) is within 0.2% of the value stored
+under **2004** (7.840) — the drift, made concrete.
 
 This is in `ebas_thredds.py`, which `CLAUDE.md` calls the valuable, subtle part.
 Read this whole document before changing it.
