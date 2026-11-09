@@ -181,7 +181,7 @@ The database file defaults to `/data/actris.db` and can be overridden with the `
 
 ## Deployment
 
-The backend is deployed on Railway (auto-deploys on push to `main`). The frontend is built with `npm run build` and served as static files.
+The backend is deployed on Railway (auto-deploys on push to `main`), in the EU West region (Amsterdam), with a 0.5 GB volume at `/data`. Railway builds `backend/Dockerfile` (root directory `/backend`); the deploy settings are in the service's settings, not in the repository: healthcheck path `/health` (timeout 60 s), restart on failure (5 retries). The frontend is built with `npm run build` and served as static files.
 
 Environment variables that matter in production (all documented in `backend/.env.example`):
 
